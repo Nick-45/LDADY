@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabaseClient"; // <-- import Supabase client
+import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { useAuth } from "@/hooks/useAuth"; // <-- import useAuth to get user id
 
 const CURRENCIES = [
   { value: "USD", label: "USD ($)" },
@@ -27,6 +28,7 @@ interface PostProductModalProps {
 export default function PostProductModal({ isOpen, onClose }: PostProductModalProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth(); // get logged-in user
 
   const [formData, setFormData] = useState({
     name: "",
@@ -38,15 +40,18 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
 
   const mutation = useMutation({
     mutationFn: async () => {
+      if (!user) throw new Error("User not logged in");
+
       const { data, error } = await supabase
-        .from("products") // <-- your Supabase table name
+        .from("products")
         .insert([
           {
             name: formData.name,
             description: formData.description,
             price: parseFloat(formData.price),
             currency: formData.currency,
-            image_url: formData.imageUrl || null,
+            image_url: formData.imageUrl ? [formData.imageUrl] : [], // wrap in array for text[]
+            user_id: user.id, // include user id
           },
         ]);
 
@@ -70,9 +75,7 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
   const getCurrencySymbol = () => {
     const selected = CURRENCIES.find((c) => c.value === formData.currency);
     if (!selected) return "KSh";
-    if (selected.label.includes("(")) {
-      return selected.label.split("(")[1].replace(")", "");
-    }
+    if (selected.label.includes("(")) return selected.label.split("(")[1].replace(")", "");
     return selected.value;
   };
 
@@ -88,7 +91,6 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
           <DialogTitle>Post a New Product</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Product Name */}
           <div className="space-y-2">
             <Label htmlFor="name">Product Name *</Label>
             <Input
@@ -100,7 +102,6 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             />
           </div>
 
-          {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="description">Description *</Label>
             <Input
@@ -112,7 +113,6 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             />
           </div>
 
-          {/* Price + Currency */}
           <div className="space-y-2">
             <Label htmlFor="price">Price *</Label>
             <div className="flex gap-2">
@@ -151,7 +151,6 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             </div>
           </div>
 
-          {/* Image URL */}
           <div className="space-y-2">
             <Label htmlFor="imageUrl">Image URL</Label>
             <Input
