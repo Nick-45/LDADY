@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase"; // Vite-compatible Supabase client
 import { useAuth } from "@/hooks/useAuth";
 import Sidebar from "@/components/layout/Sidebar";
 import RightSidebar from "@/components/layout/RightSidebar";
@@ -8,12 +8,6 @@ import ProductPost from "@/components/product/ProductPost";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 // Define TypeScript interface for Product
 interface Product {
@@ -46,6 +40,7 @@ export default function Home() {
     retry: false,
   });
 
+  // Handle auth & errors
   useEffect(() => {
     if (authLoading) return;
 
@@ -104,7 +99,7 @@ export default function Home() {
         <div className="flex justify-center">
           <div className="w-full max-w-2xl border-x border-gray-200 min-h-screen bg-white">
             {/* Header */}
-            <div className="sticky top-0 bg-card/80 backdrop-blur-sm border-b border-border p-4" data-testid="feed-header">
+            <div className="sticky top-0 bg-card/80 backdrop-blur-sm border-b border-border p-4">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold">Home</h2>
                 {error && (
@@ -118,8 +113,8 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Product Posts Feed */}
-            <div className="divide-y divide-border" data-testid="product-feed">
+            {/* Product Feed */}
+            <div className="divide-y divide-border">
               {productsLoading ? (
                 <div className="space-y-6 p-6">
                   {[...Array(3)].map((_, i) => (
@@ -141,7 +136,7 @@ export default function Home() {
               ) : products && products.length > 0 ? (
                 products.map((product) => <ProductPost key={product.id} product={product} />)
               ) : (
-                <div className="p-12 text-center text-muted-foreground" data-testid="empty-feed">
+                <div className="p-12 text-center text-muted-foreground">
                   <p className="mb-4">No products found.</p>
                   <p>Start following users or explore trending products!</p>
                 </div>
