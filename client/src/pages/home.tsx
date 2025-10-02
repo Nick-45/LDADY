@@ -1,13 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
 import Sidebar from "@/components/layout/Sidebar";
 import RightSidebar from "@/components/layout/RightSidebar";
 import ProductPost from "@/components/product/ProductPost";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { isUnauthorizedError } from "@/lib/authUtils";
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // Define TypeScript interface for Product
 interface Product {
@@ -16,7 +22,7 @@ interface Product {
   description: string;
   image: string;
   price: number;
-  // Add other properties as needed
+  created_at: string;
 }
 
 export default function Home() {
@@ -24,15 +30,20 @@ export default function Home() {
   const { toast } = useToast();
   const [shouldRedirect, setShouldRedirect] = useState(false);
 
-  const {
-    data: products,
-    isLoading: productsLoading,
-    error,
-    refetch,
-  } = useQuery<Product[]>({
-    queryKey: ["/api/products"],
+  // Fetch products from Supabase
+  const { data: products, isLoading: productsLoading, error, refetch } = useQuery<Product[]>({
+    queryKey: ["products"],
+    enabled: isAuthenticated,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from<Product>("products")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
     retry: false,
-    enabled: isAuthenticated, // Only fetch if authenticated
   });
 
   useEffect(() => {
@@ -46,20 +57,12 @@ export default function Home() {
       });
       setShouldRedirect(true);
     } else if (error) {
-      if (isUnauthorizedError(error as Error)) {
-        toast({
-          title: "Session expired",
-          description: "Please log in again",
-          variant: "destructive",
-        });
-        setShouldRedirect(true);
-      } else {
-        toast({
-          title: "Error loading products",
-          description: "Please try again later",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Error loading products",
+        description: error.message,
+        variant: "destructive",
+      });
+      setShouldRedirect(true);
     }
 
     if (shouldRedirect) {
@@ -97,7 +100,6 @@ export default function Home() {
     <div className="flex min-h-screen">
       <Sidebar />
 
-      {/* Main content area with adjusted margins */}
       <div className="flex-1 ml-20 mr-64">
         <div className="flex justify-center">
           <div className="w-full max-w-2xl border-x border-gray-200 min-h-screen bg-white">
@@ -105,8 +107,8 @@ export default function Home() {
             <div className="sticky top-0 bg-card/80 backdrop-blur-sm border-b border-border p-4" data-testid="feed-header">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold">Home</h2>
-                {error && !isUnauthorizedError(error as Error) && (
-                  <button 
+                {error && (
+                  <button
                     onClick={() => refetch()}
                     className="text-sm px-3 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
                   >
@@ -136,14 +138,8 @@ export default function Home() {
                     </Card>
                   ))}
                 </div>
-              ) : error && isUnauthorizedError(error as Error) ? (
-                <div className="p-12 text-center">
-                  <p className="text-destructive">Your session has expired. Redirecting to login...</p>
-                </div>
               ) : products && products.length > 0 ? (
-                products.map((product) => (
-                  <ProductPost key={product.id} product={product} />
-                ))
+                products.map((product) => <ProductPost key={product.id} product={product} />)
               ) : (
                 <div className="p-12 text-center text-muted-foreground" data-testid="empty-feed">
                   <p className="mb-4">No products found.</p>
