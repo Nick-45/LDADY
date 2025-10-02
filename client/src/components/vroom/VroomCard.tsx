@@ -1,9 +1,11 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FaStore, FaEye, FaHeart, FaUser, FaShoppingBag, FaLock } from "react-icons/fa";
 import { Link } from "wouter";
-import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient"; // your Supabase client
+import type { SessionUser } from "@/types";
 
 interface VroomCardProps {
   vroom: {
@@ -18,58 +20,96 @@ interface VroomCardProps {
       lastName?: string;
       profileImageUrl?: string;
     };
-    _count?: {
-      products: number;
-      followers: number;
-      views: number;
-    };
-    stats?: {
-      products: number;
-      followers: number;
-      views: number;
-    };
-    products?: any[];
   };
+  currentUser?: SessionUser; // from auth context
   showFollowButton?: boolean;
-  initialIsFollowing?: boolean;
 }
 
-export default function VroomCard({ 
-  vroom, 
-  showFollowButton = false, 
-  initialIsFollowing = false 
+export default function VroomCard({
+  vroom,
+  currentUser,
+  showFollowButton = false,
 }: VroomCardProps) {
-  const [isFollowing, setIsFollowing] = useState(initialIsFollowing);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [productsCount, setProductsCount] = useState(0);
+  const [viewsCount, setViewsCount] = useState(0);
+
+  // Fetch stats from Supabase
+  useEffect(() => {
+    const fetchVroomStats = async () => {
+      try {
+        // Count followers
+        const { count: followerCount } = await supabase
+          .from("vroom_followers")
+          .select("*", { count: "exact" })
+          .eq("vroom_id", vroom.id);
+
+        setFollowersCount(followerCount || 0);
+
+        // Count products
+        const { count: productCount } = await supabase
+          .from("products")
+          .select("*", { count: "exact" })
+          .eq("vroom_id", vroom.id);
+
+        setProductsCount(productCount || 0);
+
+        // Count views
+        const { count: viewCount } = await supabase
+          .from("vroom_views")
+          .select("*", { count: "exact" })
+          .eq("vroom_id", vroom.id);
+
+        setViewsCount(viewCount || 0);
+
+        // Check if current user is following
+        if (currentUser) {
+          const { data } = await supabase
+            .from("vroom_followers")
+            .select("*")
+            .eq("vroom_id", vroom.id)
+            .eq("user_id", currentUser.id)
+            .single();
+
+          setIsFollowing(!!data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch vroom stats:", err);
+      }
+    };
+
+    fetchVroomStats();
+  }, [vroom.id, currentUser]);
 
   const handleFollowClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!currentUser) return;
 
     const prevState = isFollowing;
     setIsFollowing(!isFollowing); // optimistic update
+    setFollowersCount(f => f + (prevState ? -1 : 1));
 
     try {
-      const res = await fetch(`/api/vrooms/${vroom.id}/follow`, {
-        method: isFollowing ? "DELETE" : "POST",
-      });
-      if (!res.ok) throw new Error("Failed to toggle follow");
+      if (prevState) {
+        await supabase
+          .from("vroom_followers")
+          .delete()
+          .eq("vroom_id", vroom.id)
+          .eq("user_id", currentUser.id);
+      } else {
+        await supabase
+          .from("vroom_followers")
+          .insert({ vroom_id: vroom.id, user_id: currentUser.id });
+      }
     } catch (err) {
       console.error(err);
-      // revert UI if request fails
+      // revert on failure
       setIsFollowing(prevState);
+      setFollowersCount(f => f + (prevState ? 1 : -1));
     }
   };
-
-  const getProductCount = () => {
-    if (vroom.products && Array.isArray(vroom.products)) return vroom.products.length;
-    if (vroom._count?.products !== undefined) return vroom._count.products;
-    if (vroom.stats?.products !== undefined) return vroom.stats.products;
-    return 0;
-  };
-
-  const productCount = getProductCount();
-  const followers = vroom._count?.followers || vroom.stats?.followers || 0;
-  const views = vroom._count?.views || vroom.stats?.views || 0;
 
   return (
     <Link href={`/vroom/${vroom.id}`}>
@@ -82,12 +122,14 @@ export default function VroomCard({
                 src={vroom.coverImageUrl}
                 alt={vroom.name}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                loading="lazy"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
                 <FaStore className="text-4xl text-muted-foreground/50" />
               </div>
             )}
+
             <div className="absolute top-3 right-3">
               <Badge variant={vroom.isPublic ? "default" : "secondary"} className="flex items-center gap-1">
                 {vroom.isPublic ? (
@@ -126,6 +168,7 @@ export default function VroomCard({
                     src={vroom.user.profileImageUrl}
                     alt="Owner"
                     className="w-6 h-6 rounded-full object-cover border"
+                    loading="lazy"
                   />
                 ) : (
                   <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
@@ -143,19 +186,19 @@ export default function VroomCard({
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1" title="Products">
                   <FaShoppingBag className="text-xs" />
-                  {productCount}
+                  {productsCount}
                 </span>
                 <span className="flex items-center gap-1" title="Followers">
                   <FaHeart className="text-xs" />
-                  {followers}
+                  {followersCount}
                 </span>
                 <span className="flex items-center gap-1" title="Views">
                   <FaEye className="text-xs" />
-                  {views}
+                  {viewsCount}
                 </span>
               </div>
 
-              {showFollowButton && (
+              {showFollowButton && currentUser && (
                 <Button
                   variant={isFollowing ? "outline" : "default"}
                   size="sm"
