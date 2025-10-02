@@ -1,59 +1,37 @@
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { createClient } from "@supabase/supabase-js";
 import { Skeleton } from "@/components/ui/skeleton";
 import ProductCard from "@/components/product/ProductCard";
+import { createClient } from "@supabase/supabase-js";
 
 // Initialize Supabase client
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
 );
-
-interface Product {
-  id: string;
-  title: string;
-  description: string;
-  image: string;
-  price: number;
-  likes?: number;
-  views?: number;
-}
-
-interface Vroom {
-  id: string;
-  name: string;
-  description?: string;
-  products?: Product[];
-}
 
 export default function VroomDetailsPage() {
   const { id } = useParams<{ id: string }>();
 
-  const { data, isLoading, error } = useQuery<Vroom>({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["vroom", id],
     queryFn: async () => {
-      // Fetch vroom info
-      const { data: vroomData, error: vroomError } = await supabase
-        .from<Vroom>("vrooms")
-        .select("*")
+      if (!id) return null;
+
+      // Fetch the vroom from Supabase
+      const { data: vroom, error } = await supabase
+        .from("vrooms")
+        .select(`
+          *,
+          products (*)
+        `)
         .eq("id", id)
-        .single();
+        .single(); // get a single row
 
-      if (vroomError) throw vroomError;
-
-      // Fetch products belonging to this vroom
-      const { data: productsData, error: productsError } = await supabase
-        .from<Product>("products")
-        .select("*")
-        .eq("vroom_id", id);
-
-      if (productsError) throw productsError;
-
-      return { ...vroomData, products: productsData };
+      if (error) throw error;
+      return vroom;
     },
     enabled: !!id,
-    retry: false,
   });
 
   if (isLoading) {
@@ -73,9 +51,9 @@ export default function VroomDetailsPage() {
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">{data?.name}</h1>
-      {data?.products && data.products.length > 0 ? (
+      {data?.products?.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {data.products.map((product) => (
+          {data.products.map((product: any) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
