@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabaseClient"; // ✅ Use your Supabase client
 import {
   Dialog,
   DialogContent,
@@ -26,15 +26,15 @@ interface Product {
   name: string;
   description?: string;
   price: string;
-  imageUrls: string[];
-  userId: string;
-  createdAt: string;
+  image_urls: string[];
+  user_id: string;
+  created_at: string;
 }
 
-export default function SelectProductForVroomModal({ 
-  isOpen, 
-  onClose, 
-  vroomId 
+export default function SelectProductForVroomModal({
+  isOpen,
+  onClose,
+  vroomId,
 }: SelectProductForVroomModalProps) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -43,48 +43,63 @@ export default function SelectProductForVroomModal({
 
   // Fetch user's products
   const { data: userProducts, isLoading } = useQuery<Product[]>({
-    queryKey: ["/api/products/user"],
+    queryKey: ["user-products", user?.id],
     enabled: isOpen && !!user,
-    retry: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from<Product>("products")
+        .select("*")
+        .eq("user_id", user?.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
   });
 
   // Fetch products already in this vroom
-  const { data: vroomProducts } = useQuery({
-    queryKey: ["/api/vrooms", vroomId],
+  const { data: vroomProducts } = useQuery<string[]>({
+    queryKey: ["vroom-products", vroomId],
     enabled: isOpen && !!vroomId,
-    retry: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vroom_products")
+        .select("product_id")
+        .eq("vroom_id", vroomId);
+      if (error) throw error;
+      return data?.map((row) => row.product_id) || [];
+    },
   });
 
-  const addProductsToVroomMutation = useMutation({
+  // Mutation to add products
+  const addProductsMutation = useMutation({
     mutationFn: async (productIds: string[]) => {
-      const promises = productIds.map(productId => 
-        apiRequest("POST", `/api/vrooms/${vroomId}/products`, { productId })
-      );
-      return await Promise.all(promises);
+      const { data, error } = await supabase
+        .from("vroom_products")
+        .insert(productIds.map((id) => ({ vroom_id: vroomId, product_id: id })));
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       toast({
         title: "Success",
-        description: `${selectedProducts.length} product${selectedProducts.length > 1 ? 's' : ''} added to vroom successfully!`,
+        description: `${selectedProducts.length} product${selectedProducts.length > 1 ? "s" : ""} added to vroom!`,
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/vrooms", vroomId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/vrooms/user"] });
+      queryClient.invalidateQueries({ queryKey: ["vroom-products", vroomId] });
+      queryClient.invalidateQueries({ queryKey: ["vrooms-user", user?.id] });
       handleClose();
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error?.message || "Failed to add products to vroom",
+        description: error.message || "Failed to add products",
         variant: "destructive",
       });
     },
   });
 
   const handleProductToggle = (productId: string) => {
-    setSelectedProducts(prev => 
-      prev.includes(productId)
-        ? prev.filter(id => id !== productId)
-        : [...prev, productId]
+    setSelectedProducts((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
     );
   };
 
@@ -97,7 +112,7 @@ export default function SelectProductForVroomModal({
       });
       return;
     }
-    addProductsToVroomMutation.mutate(selectedProducts);
+    addProductsMutation.mutate(selectedProducts);
   };
 
   const handleClose = () => {
@@ -107,23 +122,20 @@ export default function SelectProductForVroomModal({
 
   if (!isOpen) return null;
 
-  // Get products already in vroom
-  const productsInVroom = (vroomProducts as any)?.products?.map((p: any) => p.id) || [];
-  
   // Filter out products already in vroom
-  const availableProducts = userProducts?.filter(product => !productsInVroom.includes(product.id)) || [];
+  const availableProducts = userProducts?.filter((p) => !vroomProducts?.includes(p.id)) || [];
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto" data-testid="select-product-modal">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle data-testid="select-product-title">Add Products to Vroom</DialogTitle>
+          <DialogTitle>Add Products to Vroom</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map(i => (
+              {[1, 2, 3].map((i) => (
                 <Card key={i}>
                   <CardContent className="p-4">
                     <Skeleton className="h-32 w-full mb-3" />
@@ -139,10 +151,9 @@ export default function SelectProductForVroomModal({
                 <FaStore className="mx-auto text-6xl text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium mb-2">No products available</h3>
                 <p className="text-muted-foreground">
-                  {userProducts?.length === 0 
+                  {userProducts?.length === 0
                     ? "You haven't created any products yet. Create your first product to add it to this vroom."
-                    : "All your products are already in this vroom."
-                  }
+                    : "All your products are already in this vroom."}
                 </p>
               </CardContent>
             </Card>
@@ -150,22 +161,18 @@ export default function SelectProductForVroomModal({
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {availableProducts.map((product) => (
-                  <Card 
+                  <Card
                     key={product.id}
                     className={`cursor-pointer transition-all hover:shadow-lg ${
-                      selectedProducts.includes(product.id) 
-                        ? "ring-2 ring-primary bg-primary/5" 
-                        : ""
+                      selectedProducts.includes(product.id) ? "ring-2 ring-primary bg-primary/5" : ""
                     }`}
                     onClick={() => handleProductToggle(product.id)}
-                    data-testid={`product-card-${product.id}`}
                   >
                     <CardContent className="p-0">
-                      {/* Product Image */}
                       <div className="relative h-32 overflow-hidden rounded-t-lg">
-                        {product.imageUrls && product.imageUrls.length > 0 ? (
+                        {product.image_urls && product.image_urls.length > 0 ? (
                           <img
-                            src={product.imageUrls[0]}
+                            src={product.image_urls[0]}
                             alt={product.name}
                             className="w-full h-full object-cover"
                           />
@@ -174,8 +181,6 @@ export default function SelectProductForVroomModal({
                             <FaStore className="text-2xl text-muted-foreground" />
                           </div>
                         )}
-                        
-                        {/* Selection indicator */}
                         {selectedProducts.includes(product.id) && (
                           <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-2">
                             <FaCheck className="text-xs" />
@@ -183,22 +188,15 @@ export default function SelectProductForVroomModal({
                         )}
                       </div>
 
-                      {/* Product Info */}
                       <div className="p-3">
-                        <h4 className="font-medium text-sm line-clamp-1 mb-1" data-testid="product-name">
-                          {product.name}
-                        </h4>
-                        
+                        <h4 className="font-medium text-sm line-clamp-1 mb-1">{product.name}</h4>
                         <div className="flex items-center justify-between">
                           <Badge variant="secondary" className="text-xs">
                             ${parseFloat(product.price).toFixed(2)}
                           </Badge>
                         </div>
-
                         {product.description && (
-                          <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                            {product.description}
-                          </p>
+                          <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{product.description}</p>
                         )}
                       </div>
                     </CardContent>
@@ -206,17 +204,15 @@ export default function SelectProductForVroomModal({
                 ))}
               </div>
 
-              {/* Action buttons */}
               <div className="flex justify-between pt-4 border-t">
-                <Button variant="outline" onClick={handleClose} data-testid="button-cancel">
+                <Button variant="outline" onClick={handleClose}>
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={handleAddProducts}
-                  disabled={selectedProducts.length === 0 || addProductsToVroomMutation.isPending}
-                  data-testid="button-add-products"
+                  disabled={selectedProducts.length === 0 || addProductsMutation.isLoading}
                 >
-                  {addProductsToVroomMutation.isPending ? (
+                  {addProductsMutation.isLoading ? (
                     "Adding..."
                   ) : (
                     <>
