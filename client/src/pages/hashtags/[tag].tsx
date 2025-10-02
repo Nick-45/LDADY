@@ -1,19 +1,38 @@
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseclient";
 import { Skeleton } from "@/components/ui/skeleton";
-import ProductCard from "@/components/product/ProductCard"; // ✅ correct path
+import ProductCard from "@/components/product/ProductCard";
+
+interface Product {
+  id: string;
+  title: string;
+  description: string;
+  image: string;
+  price: number;
+  created_at: string;
+  category?: string;
+  tags?: string[]; // optional array of tags
+}
 
 export default function HashtagPage() {
   const { tag } = useParams<{ tag: string }>();
 
-  const { data, isLoading, error } = useQuery({
+  const fetchHashtagProducts = async (tag: string) => {
+    const { data, error } = await supabase
+      .from<Product>("products")
+      .select("*")
+      .ilike("tags", `%${tag}%`) // assuming `tags` is a string array stored as text or JSON
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  };
+
+  const { data: products, isLoading, error } = useQuery({
     queryKey: ["hashtag", tag],
-    queryFn: async () => {
-      const res = await fetch(`/api/hashtags/${tag}`);
-      if (!res.ok) throw new Error("Failed to fetch hashtag");
-      return res.json();
-    },
-    enabled: !!tag, // only run if tag exists
+    queryFn: () => fetchHashtagProducts(tag!),
+    enabled: !!tag,
   });
 
   if (isLoading) {
@@ -27,15 +46,15 @@ export default function HashtagPage() {
   }
 
   if (error) {
-    return <p className="p-4 text-red-500">Failed to load hashtag.</p>;
+    return <p className="p-4 text-red-500">Failed to load hashtag products.</p>;
   }
 
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">#{tag}</h1>
-      {data?.products?.length > 0 ? (
+      {products && products.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {data.products.map((product: any) => (
+          {products.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
@@ -47,3 +66,4 @@ export default function HashtagPage() {
     </div>
   );
 }
+
