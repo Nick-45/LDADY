@@ -1,7 +1,7 @@
 // components/product/ProductDetailPage.tsx
 import { useState, useEffect } from "react";
 import { useRoute } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/hooks/useCart";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,8 +10,6 @@ import { FaShoppingCart, FaShare, FaHeart, FaArrowLeft, FaStore } from "react-ic
 import MessageSellerButton from "@/components/product/MessageSellerButton";
 import ProductCommentsModal from "@/components/product/ProductCommentsModal";
 import AddProductToVroomModal from "@/components/vroom/AddProductToVroomModal";
-
-// ✅ Layout
 import Sidebar from "@/components/layout/Sidebar";
 import RightSidebar from "@/components/layout/RightSidebar";
 
@@ -44,13 +42,31 @@ export default function ProductDetailPage() {
     }
   }, [params?.id]);
 
+  // Fetch product from Supabase
   const fetchProductData = async (productId: string) => {
     try {
       setLoading(true);
-      const response = await apiRequest("GET", `/api/products/${productId}`);
-      const productData = await response.json();
-      setProduct(productData);
-    } catch (error) {
+
+      const { data, error } = await supabase
+        .from("products")
+        .select(`
+          *,
+          user:users(id, first_name, last_name, email, profile_image_url)
+        `)
+        .eq("id", productId)
+        .single();
+
+      if (error || !data) {
+        toast({
+          title: "Error",
+          description: "Failed to load product",
+          variant: "destructive",
+        });
+        setProduct(null);
+      } else {
+        setProduct(data);
+      }
+    } catch (err) {
       toast({
         title: "Error",
         description: "Failed to load product",
@@ -90,9 +106,7 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading...
-      </div>
+      <div className="min-h-screen flex items-center justify-center">Loading...</div>
     );
   }
 
@@ -105,8 +119,8 @@ export default function ProductDetailPage() {
   }
 
   const mainImage =
-    product.imageUrls && product.imageUrls.length > 0
-      ? product.imageUrls[selectedImage]
+    product.image_urls && product.image_urls.length > 0
+      ? product.image_urls[selectedImage]
       : "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600";
 
   const currencySymbol = product.currency
@@ -120,38 +134,23 @@ export default function ProductDetailPage() {
     <div className="flex min-h-screen">
       <Sidebar />
 
-      {/* Main Product Content - centered, compressed */}
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto space-y-8">
-          {/* Back Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.history.back()}
-            className="mb-6"
-          >
-            <FaArrowLeft className="mr-2" />
-            Back
+          <Button variant="outline" size="sm" onClick={() => window.history.back()} className="mb-6">
+            <FaArrowLeft className="mr-2" /> Back
           </Button>
 
-          {/* Product Image */}
           <div>
-            <img
-              src={mainImage}
-              alt={product.name}
-              className="w-full object-cover rounded-lg"
-            />
-            {product.imageUrls && product.imageUrls.length > 1 && (
+            <img src={mainImage} alt={product.name} className="w-full object-cover rounded-lg" />
+            {product.image_urls && product.image_urls.length > 1 && (
               <div className="grid grid-cols-4 gap-2 mt-4">
-                {product.imageUrls.map((url: string, index: number) => (
+                {product.image_urls.map((url: string, index: number) => (
                   <img
                     key={index}
                     src={url}
                     alt={`${product.name} ${index + 1}`}
                     className={`w-full h-20 object-cover rounded cursor-pointer border-2 ${
-                      selectedImage === index
-                        ? "border-primary"
-                        : "border-transparent"
+                      selectedImage === index ? "border-primary" : "border-transparent"
                     }`}
                     onClick={() => setSelectedImage(index)}
                   />
@@ -160,7 +159,6 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          {/* Product Details */}
           <div className="space-y-6">
             <div>
               <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
@@ -173,50 +171,39 @@ export default function ProductDetailPage() {
 
             {product.user && (
               <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
-                {product.user.profileImageUrl ? (
-                  <img
-                    src={product.user.profileImageUrl}
-                    alt="Seller"
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
+                {product.user.profile_image_url ? (
+                  <img src={product.user.profile_image_url} alt="Seller" className="w-12 h-12 rounded-full object-cover" />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                     <span className="text-lg font-semibold">
-                      {product.user.firstName?.[0]}
-                      {product.user.lastName?.[0]}
+                      {product.user.first_name?.[0]}
+                      {product.user.last_name?.[0]}
                     </span>
                   </div>
                 )}
                 <div>
                   <p className="font-semibold">
-                    {product.user.firstName} {product.user.lastName}
+                    {product.user.first_name} {product.user.last_name}
                   </p>
                   <p className="text-sm text-muted-foreground">Seller</p>
                 </div>
               </div>
             )}
 
-            {/* Action Buttons */}
             <div className="space-y-3">
               <Button onClick={handleAddToCart} className="w-full" size="lg">
-                <FaShoppingCart className="mr-2" />
-                Add to Cart
+                <FaShoppingCart className="mr-2" /> Add to Cart
               </Button>
 
               <div className="flex gap-2">
                 <Button onClick={handleShare} variant="outline" className="flex-1">
-                  <FaShare className="mr-2" />
-                  Share
+                  <FaShare className="mr-2" /> Share
                 </Button>
 
-                {isAuthenticated && (product.userId || product.user?.id) && (
+                {isAuthenticated && product.user?.id && (
                   <MessageSellerButton
-                    sellerId={product.userId || product.user?.id || ""}
-                    sellerName={
-                      product.user
-                        ? `${product.user.firstName} ${product.user.lastName}`
-                        : undefined
-                    }
+                    sellerId={product.user.id}
+                    sellerName={`${product.user.first_name} ${product.user.last_name}`}
                     productName={product.name}
                     variant="outline"
                     className="flex-1"
@@ -225,27 +212,16 @@ export default function ProductDetailPage() {
               </div>
 
               {isAuthenticated && (
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowVroomModal(true)}
-                  className="w-full"
-                >
-                  <FaStore className="mr-2" />
-                  Add to Vroom
+                <Button variant="ghost" onClick={() => setShowVroomModal(true)} className="w-full">
+                  <FaStore className="mr-2" /> Add to Vroom
                 </Button>
               )}
 
-              <Button
-                variant="ghost"
-                onClick={() => setShowCommentsModal(true)}
-                className="w-full"
-              >
-                <FaHeart className="mr-2" />
-                View Comments
+              <Button variant="ghost" onClick={() => setShowCommentsModal(true)} className="w-full">
+                <FaHeart className="mr-2" /> View Comments
               </Button>
             </div>
 
-            {/* Product Stats */}
             {product.likes !== undefined && (
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
@@ -257,7 +233,6 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* Modals */}
         {showVroomModal && (
           <AddProductToVroomModal
             isOpen={showVroomModal}
