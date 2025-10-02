@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabase"; // <-- import Supabase client
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -38,24 +38,37 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
 
   const mutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/products", formData);
+      const { data, error } = await supabase
+        .from("products") // <-- your Supabase table name
+        .insert([
+          {
+            name: formData.name,
+            description: formData.description,
+            price: parseFloat(formData.price),
+            currency: formData.currency,
+            image_url: formData.imageUrl || null,
+          },
+        ]);
+
+      if (error) throw error;
+      return data;
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       toast({ title: "Success", description: "Product posted successfully" });
       queryClient.invalidateQueries({ queryKey: ["products"] });
       onClose();
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Failed to post product",
+        description: error.message || "Failed to post product",
         variant: "destructive",
       });
     },
   });
 
   const getCurrencySymbol = () => {
-    const selected = CURRENCIES.find(c => c.value === formData.currency);
+    const selected = CURRENCIES.find((c) => c.value === formData.currency);
     if (!selected) return "KSh";
     if (selected.label.includes("(")) {
       return selected.label.split("(")[1].replace(")", "");
@@ -81,7 +94,7 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             <Input
               id="name"
               value={formData.name}
-              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
               required
               placeholder="Enter product name"
             />
@@ -93,7 +106,7 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             <Input
               id="description"
               value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
               required
               placeholder="Enter product description"
             />
@@ -104,16 +117,14 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             <Label htmlFor="price">Price *</Label>
             <div className="flex gap-2">
               <div className="flex-1 flex items-center border rounded-md overflow-hidden">
-                <span className="px-3 whitespace-nowrap text-gray-600 bg-gray-100">
-                  {getCurrencySymbol()}
-                </span>
+                <span className="px-3 whitespace-nowrap text-gray-600 bg-gray-100">{getCurrencySymbol()}</span>
                 <Input
                   id="price"
                   type="number"
                   step="0.01"
                   min="0"
                   value={formData.price}
-                  onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
                   placeholder="0.00"
                   required
                   className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-1"
@@ -123,13 +134,13 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
               <div className="w-40">
                 <Select
                   value={formData.currency}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, currency: value }))}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, currency: value }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Currency" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CURRENCIES.map(currency => (
+                    {CURRENCIES.map((currency) => (
                       <SelectItem key={currency.value} value={currency.value}>
                         {currency.label}
                       </SelectItem>
@@ -146,7 +157,7 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             <Input
               id="imageUrl"
               value={formData.imageUrl}
-              onChange={(e) => setFormData(prev => ({ ...prev, imageUrl: e.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, imageUrl: e.target.value }))}
               placeholder="https://example.com/image.jpg"
             />
           </div>
