@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient"; // ✅ import your Vite Supabase client
 import Sidebar from "@/components/layout/Sidebar";
 import ChatArea from "@/components/chat/ChatArea";
 import StartConversationModal from "@/components/messages/StartConversationModal";
@@ -9,12 +9,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { FaPlus, FaSearch } from "react-icons/fa";
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function Messages() {
   const { toast } = useToast();
@@ -81,9 +75,7 @@ export default function Messages() {
   // Filter conversations based on search query
   const filteredConversations = useMemo(() => {
     return uniqueConversations.filter((conversation: any) => {
-      const fullName = `${conversation.other_user?.first_name || ""} ${
-        conversation.other_user?.last_name || ""
-      }`.toLowerCase();
+      const fullName = `${conversation.other_user?.first_name || ""} ${conversation.other_user?.last_name || ""}`.toLowerCase();
       const lastMessage = conversation.last_message?.toLowerCase() || "";
       const query = searchQuery.toLowerCase();
       return fullName.includes(query) || lastMessage.includes(query);
@@ -105,7 +97,7 @@ export default function Messages() {
       <div className="flex-1 ml-64">
         <div className="flex h-screen">
           {/* Conversations List */}
-          <div className="w-80 border-r border-gray-300 bg-gray-50 shadow-lg" data-testid="conversations-list">
+          <div className="w-80 border-r border-gray-300 bg-gray-50 shadow-lg">
             {/* Header */}
             <div className="p-6 border-b border-gray-300 bg-white">
               <div className="flex items-center justify-between mb-4">
@@ -114,7 +106,6 @@ export default function Messages() {
                   size="sm"
                   onClick={() => setShowStartConversation(true)}
                   className="bg-red-500 hover:bg-red-600 text-white rounded-full w-10 h-10 p-0 shadow-md"
-                  data-testid="button-start-conversation"
                 >
                   <FaPlus className="w-5 h-5" />
                 </Button>
@@ -128,7 +119,6 @@ export default function Messages() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-12 py-3 border-gray-300 rounded-xl bg-gray-100 focus:bg-white focus:border-gray-400 shadow-sm"
-                  data-testid="input-search-conversations"
                 />
               </div>
             </div>
@@ -163,7 +153,6 @@ export default function Messages() {
                             : "bg-white border-l-4 border-l-transparent"
                         }`}
                         onClick={() => setSelectedUserId(conversation.other_user.id)}
-                        data-testid={`conversation-${conversation.other_user.id}`}
                       >
                         <div className="flex items-center space-x-4">
                           <div className="relative">
@@ -186,16 +175,10 @@ export default function Messages() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between">
                               <div className="flex-1 min-w-0">
-                                <p
-                                  className="font-bold text-gray-900 truncate text-base"
-                                  data-testid={`conversation-name-${conversation.other_user.id}`}
-                                >
+                                <p className="font-bold text-gray-900 truncate text-base">
                                   {conversation.other_user?.first_name} {conversation.other_user?.last_name}
                                 </p>
-                                <p
-                                  className="text-sm text-gray-500 truncate mt-1"
-                                  data-testid={`conversation-preview-${conversation.other_user.id}`}
-                                >
+                                <p className="text-sm text-gray-500 truncate mt-1">
                                   {conversation.last_message}
                                 </p>
                               </div>
@@ -221,11 +204,11 @@ export default function Messages() {
                   })}
                 </div>
               ) : searchQuery ? (
-                <div className="p-8 text-center text-gray-500" data-testid="no-search-results">
+                <div className="p-8 text-center text-gray-500">
                   <p>No conversations match "{searchQuery}"</p>
                 </div>
               ) : (
-                <div className="p-8 text-center text-gray-500" data-testid="empty-conversations">
+                <div className="p-8 text-center text-gray-500">
                   <p>No conversations yet.</p>
                   <p className="text-sm mt-1">Start chatting with product sellers!</p>
                 </div>
@@ -237,7 +220,7 @@ export default function Messages() {
           {selectedUserId ? (
             <ChatArea userId={selectedUserId} />
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 bg-gray-50" data-testid="no-chat-selected">
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 bg-gray-50">
               <div className="text-center">
                 <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 mx-auto shadow-lg">
                   <FaPlus className="w-10 h-10 text-gray-400" />
