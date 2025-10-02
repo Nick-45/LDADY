@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase"; // ✅ Vite-compatible client
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -15,26 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-  FaSearch, 
-  FaCompass, 
-  FaFire, 
-  FaHashtag, 
-  FaStore, 
-  FaUser, 
-  FaShoppingBag,
-  FaHeart,
-  FaStar,
-  FaFilter,
-  FaChevronUp,
-  FaSort,
-  FaList
+  FaSearch, FaCompass, FaFire, FaHashtag, FaStore, FaUser, 
+  FaShoppingBag, FaHeart, FaStar, FaChevronUp
 } from "react-icons/fa";
-
-// Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 type SearchType = 'all' | 'products' | 'users' | 'vrooms';
 type SortBy = 'recent' | 'popular' | 'price_low' | 'price_high' | 'likes' | 'views';
@@ -86,72 +69,42 @@ export default function Explore() {
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
-  // Header height
-  useEffect(() => {
-    if (headerRef.current) setHeaderHeight(headerRef.current.offsetHeight);
-  }, []);
-
-  // Scroll handling
+  useEffect(() => { if (headerRef.current) setHeaderHeight(headerRef.current.offsetHeight); }, []);
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      if (currentScrollY > lastScrollY && currentScrollY > 100) setIsHeaderVisible(false);
-      else setIsHeaderVisible(true);
+      setIsHeaderVisible(!(currentScrollY > lastScrollY && currentScrollY > 100));
       setLastScrollY(currentScrollY);
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
 
-  // Auth check
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      toast({
-        title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
-        variant: "destructive",
-      });
+      toast({ title: "Unauthorized", description: "Logging in again...", variant: "destructive" });
       setTimeout(() => window.location.href = "/api/login", 500);
     }
   }, [isAuthenticated, authLoading, toast]);
 
-  // Fetch products from Supabase
   const fetchProducts = async (query?: string) => {
-    let supabaseQuery = supabase
-      .from<Product>("products")
-      .select("*");
-
+    let supabaseQuery = supabase.from<Product>("products").select("*");
     if (query) supabaseQuery = supabaseQuery.ilike('title', `%${query}%`);
     if (selectedCategory !== 'all') supabaseQuery = supabaseQuery.eq('category', selectedCategory);
-
-    // Sorting
     switch (sortBy) {
-      case 'recent':
-        supabaseQuery = supabaseQuery.order('created_at', { ascending: false });
-        break;
-      case 'price_low':
-        supabaseQuery = supabaseQuery.order('price', { ascending: true });
-        break;
-      case 'price_high':
-        supabaseQuery = supabaseQuery.order('price', { ascending: false });
-        break;
-      case 'likes':
-        supabaseQuery = supabaseQuery.order('likes', { ascending: false });
-        break;
-      case 'views':
-        supabaseQuery = supabaseQuery.order('views', { ascending: false });
-        break;
-      default:
-        supabaseQuery = supabaseQuery.order('created_at', { ascending: false });
+      case 'recent': supabaseQuery = supabaseQuery.order('created_at', { ascending: false }); break;
+      case 'price_low': supabaseQuery = supabaseQuery.order('price', { ascending: true }); break;
+      case 'price_high': supabaseQuery = supabaseQuery.order('price', { ascending: false }); break;
+      case 'likes': supabaseQuery = supabaseQuery.order('likes', { ascending: false }); break;
+      case 'views': supabaseQuery = supabaseQuery.order('views', { ascending: false }); break;
+      default: supabaseQuery = supabaseQuery.order('created_at', { ascending: false });
     }
-
     const { data, error } = await supabaseQuery;
     if (error) throw error;
     return data || [];
   };
 
-  // React Query hooks
-  const { data: featuredProducts, isLoading: featuredLoading, error: featuredError, refetch: refetchFeatured } = useQuery({
+  const { data: featuredProducts, isLoading: featuredLoading, error: featuredError } = useQuery({
     queryKey: ['featuredProducts', selectedCategory, sortBy],
     queryFn: () => fetchProducts(),
     enabled: isAuthenticated,
@@ -160,12 +113,7 @@ export default function Explore() {
 
   const { data: trendingProducts, isLoading: trendingLoading, error: trendingError } = useQuery({
     queryKey: ['trendingProducts'],
-    queryFn: () => supabase
-      .from<Product>('products')
-      .select('*')
-      .order('likes', { ascending: false })
-      .limit(12)
-      .then(({ data, error }) => { if (error) throw error; return data || [] }),
+    queryFn: () => supabase.from<Product>('products').select('*').order('likes', { ascending: false }).limit(12).then(({ data, error }) => { if (error) throw error; return data || [] }),
     enabled: isAuthenticated,
     retry: false
   });
@@ -177,16 +125,11 @@ export default function Explore() {
     retry: false
   });
 
-  // Error handling
   useEffect(() => {
     const errors = [featuredError, trendingError].filter(Boolean);
     for (const error of errors) {
       if (error && isUnauthorizedError(error as Error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
+        toast({ title: "Unauthorized", description: "Logging in again...", variant: "destructive" });
         setTimeout(() => window.location.href = "/api/login", 500);
         return;
       }
@@ -196,13 +139,8 @@ export default function Explore() {
   const handleSearch = () => setActiveSearchQuery(searchQuery.trim());
   const handleCategoryClick = (categoryId: string) => {
     setSelectedCategory(categoryId);
-    if (categoryId !== 'all') {
-      setSearchQuery(`#${categoryId}`);
-      setActiveSearchQuery(`#${categoryId}`);
-    } else {
-      setSearchQuery("");
-      setActiveSearchQuery("");
-    }
+    setSearchQuery(categoryId !== 'all' ? `#${categoryId}` : '');
+    setActiveSearchQuery(categoryId !== 'all' ? `#${categoryId}` : '');
   };
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -211,7 +149,6 @@ export default function Explore() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-
       <div className="flex-1 ml-16 lg:ml-64 mr-0 lg:mr-80">
         <div className="flex">
           <div className="flex-1 w-full border-x border-border min-h-screen overflow-x-hidden">
@@ -220,22 +157,12 @@ export default function Explore() {
               ref={headerRef}
               className={`sticky top-0 bg-card/95 backdrop-blur-sm border-b border-border p-4 transition-transform duration-300 z-10 ${isHeaderVisible ? 'translate-y-0' : '-translate-y-full'}`}
             >
-              <div className="flex items-center gap-3 mb-4">
-                <FaCompass className="text-primary text-xl" />
-                <h2 className="text-xl font-bold">Explore</h2>
-              </div>
-
-              {/* Search Bar */}
+              <div className="flex items-center gap-3 mb-4"><FaCompass className="text-primary text-xl" /><h2 className="text-xl font-bold">Explore</h2></div>
+              {/* Search */}
               <div className="flex gap-2 mb-4">
                 <div className="flex-1 relative">
                   <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search products, users, vrooms..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    className="pl-10"
-                  />
+                  <Input placeholder="Search products, users, vrooms..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSearch()} className="pl-10" />
                 </div>
                 <Button onClick={handleSearch}><FaSearch /></Button>
               </div>
@@ -246,70 +173,27 @@ export default function Explore() {
               {categories.map((category) => {
                 const Icon = category.icon;
                 const isSelected = selectedCategory === category.id;
-                return (
-                  <Button
-                    key={category.id}
-                    variant={isSelected ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => handleCategoryClick(category.id)}
-                    className="flex items-center gap-2"
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="hidden sm:inline">{category.name}</span>
-                  </Button>
-                );
+                return <Button key={category.id} variant={isSelected ? "default" : "outline"} size="sm" onClick={() => handleCategoryClick(category.id)} className="flex items-center gap-2"><Icon className="w-4 h-4" /><span className="hidden sm:inline">{category.name}</span></Button>;
               })}
             </div>
 
-            {/* Tabs and Product Grid */}
+            {/* Tabs */}
             <Tabs defaultValue="discover" className="flex-1">
               <TabsList className="w-full justify-start border-b border-border rounded-none h-12 bg-transparent p-0 sticky z-10 bg-background" style={{ top: isHeaderVisible ? `${headerHeight}px` : '0' }}>
-                <TabsTrigger value="discover" className="flex items-center gap-2 px-3 sm:px-6"><FaCompass /> <span className="hidden sm:inline">Discover</span></TabsTrigger>
-                <TabsTrigger value="trending" className="flex items-center gap-2 px-3 sm:px-6"><FaFire /> <span className="hidden sm:inline">Trending</span></TabsTrigger>
-                <TabsTrigger value="hashtags" className="flex items-center gap-2 px-3 sm:px-6"><FaHashtag /> <span className="hidden sm:inline">Hashtags</span></TabsTrigger>
+                <TabsTrigger value="discover" className="flex items-center gap-2 px-3 sm:px-6"><FaCompass /><span className="hidden sm:inline">Discover</span></TabsTrigger>
+                <TabsTrigger value="trending" className="flex items-center gap-2 px-3 sm:px-6"><FaFire /><span className="hidden sm:inline">Trending</span></TabsTrigger>
+                <TabsTrigger value="hashtags" className="flex items-center gap-2 px-3 sm:px-6"><FaHashtag /><span className="hidden sm:inline">Hashtags</span></TabsTrigger>
               </TabsList>
 
               {/* Discover */}
               <TabsContent value="discover" className="p-4">
-                {activeSearchQuery ? (
-                  searchLoading ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-96 w-full" />)}
-                    </div>
-                  ) : searchResults && searchResults.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {searchResults.map(product => <ProductCard key={product.id} product={product} />)}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <FaSearch className="mx-auto text-4xl mb-4 opacity-50" />
-                      <p>No results found for "{activeSearchQuery}"</p>
-                    </div>
-                  )
-                ) : featuredLoading ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-96 w-full" />)}
-                  </div>
-                ) : featuredProducts && featuredProducts.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {featuredProducts.slice(0, 15).map(product => <ProductCard key={product.id} product={product} />)}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">No products available</div>
-                )}
+                {activeSearchQuery ? (searchLoading ? <SkeletonGrid /> : searchResults && searchResults.length > 0 ? <ProductGrid products={searchResults} /> : <NoResults query={activeSearchQuery} />)
+                : featuredLoading ? <SkeletonGrid /> : featuredProducts && featuredProducts.length > 0 ? <ProductGrid products={featuredProducts.slice(0,15)} /> : <div className="text-center py-12 text-muted-foreground">No products available</div>}
               </TabsContent>
 
               {/* Trending */}
               <TabsContent value="trending" className="p-4">
-                {trendingLoading ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-96 w-full" />)}
-                  </div>
-                ) : trendingProducts && trendingProducts.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {trendingProducts.map(product => <ProductCard key={product.id} product={product} />)}
-                  </div>
-                ) : <div className="text-center py-12 text-muted-foreground">No trending products</div>}
+                {trendingLoading ? <SkeletonGrid /> : trendingProducts && trendingProducts.length > 0 ? <ProductGrid products={trendingProducts} /> : <div className="text-center py-12 text-muted-foreground">No trending products</div>}
               </TabsContent>
 
               {/* Hashtags */}
@@ -337,12 +221,12 @@ export default function Explore() {
       </div>
 
       <RightSidebar />
-
-      {!isHeaderVisible && (
-        <Button onClick={scrollToTop} className="fixed bottom-6 right-6 lg:right-80 rounded-full w-12 h-12 p-0 z-40" size="icon">
-          <FaChevronUp />
-        </Button>
-      )}
+      {!isHeaderVisible && <Button onClick={scrollToTop} className="fixed bottom-6 right-6 lg:right-80 rounded-full w-12 h-12 p-0 z-40" size="icon"><FaChevronUp /></Button>}
     </div>
   );
 }
+
+// Helper components
+function SkeletonGrid() { return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-96 w-full" />)}</div>; }
+function ProductGrid({ products }: { products: Product[] }) { return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{products.map(p => <ProductCard key={p.id} product={p} />)}</div>; }
+function NoResults({ query }: { query: string }) { return <div className="text-center py-12 text-muted-foreground"><FaSearch className="mx-auto text-4xl mb-4 opacity-50" /><p>No results found for "{query}"</p></div>; }
