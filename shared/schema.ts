@@ -56,6 +56,7 @@ export const products = pgTable("products", {
   name: varchar("name").notNull(),
   description: text("description").notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency").notNull().default("KES"), // <-- added currency column
   imageUrls: text("image_urls").array(),
   hashtags: text("hashtags").array(),
   isAvailable: boolean("is_available").default(true),
@@ -63,6 +64,7 @@ export const products = pgTable("products", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
 
 // ✅ Product Likes
 export const productLikes = pgTable("product_likes", {
