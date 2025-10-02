@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { supabase } from "@/lib/supabaseClient"; // your Supabase client
 import ProductPostActions from "@/components/product/ProductPostActions";
 
 interface ProductPostProps {
@@ -6,12 +8,9 @@ interface ProductPostProps {
     id: string;
     name: string;
     description: string;
-    price: string | number;
+    price: number;
     currency?: string;
     imageUrls?: string[];
-    likes?: number;
-    comments?: number;
-    shares?: number;
     createdAt: string;
     user?: {
       id: string;
@@ -37,9 +36,38 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
 export default function ProductPost({ product }: ProductPostProps) {
   const [, setLocation] = useLocation();
 
+  const [likes, setLikes] = useState<number>(0);
+  const [comments, setComments] = useState<number>(0);
+  const [shares, setShares] = useState<number>(0);
+
   const currencySymbol = product.currency
-    ? CURRENCY_SYMBOLS[product.currency] || "KSh"
+    ? CURRENCY_SYMBOLS[product.currency] || product.currency
     : "KSh";
+
+  useEffect(() => {
+    // Fetch product interactions from Supabase
+    const fetchInteractions = async () => {
+      const { data: likesData } = await supabase
+        .from("product_likes")
+        .select("id", { count: "exact" })
+        .eq("product_id", product.id);
+      setLikes(likesData?.length || 0);
+
+      const { data: commentsData } = await supabase
+        .from("product_comments")
+        .select("id", { count: "exact" })
+        .eq("product_id", product.id);
+      setComments(commentsData?.length || 0);
+
+      const { data: sharesData } = await supabase
+        .from("product_shares")
+        .select("id", { count: "exact" })
+        .eq("product_id", product.id);
+      setShares(sharesData?.length || 0);
+    };
+
+    fetchInteractions();
+  }, [product.id]);
 
   const getTimeAgo = (dateString: string) => {
     const now = new Date();
@@ -132,15 +160,21 @@ export default function ProductPost({ product }: ProductPostProps) {
                   className="text-xl font-bold text-primary"
                   data-testid={`product-price-${product.id}`}
                 >
-                  {currencySymbol}
-                  {product.price}
+                  {currencySymbol} {product.price}
                 </span>
               </div>
+              {product.currency && (
+                <p className="text-sm text-muted-foreground">
+                  Currency: {product.currency}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Social Actions (extracted) */}
-          <ProductPostActions product={product} />
+          {/* Social Actions */}
+          <ProductPostActions
+            product={{ ...product, likes, comments, shares }}
+          />
         </div>
       </div>
     </div>
