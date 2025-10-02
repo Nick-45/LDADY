@@ -3,30 +3,35 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
+// Helper for import.meta.dirname in ESM
+const __dirname = path.resolve();
+
 export default defineConfig({
+  base: "/", // Root path for Netlify
+  root: path.resolve(__dirname, "client"), // Source folder
   plugins: [
     react(),
     runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
+    ...(process.env.NODE_ENV !== "production" && process.env.REPL_ID
       ? [
+          // Replit Cartographer plugin (only in dev on Replit)
           await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
+            m.cartographer()
           ),
         ]
       : []),
   ],
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      "@": path.resolve(__dirname, "client/src"),
+      "@shared": path.resolve(__dirname, "shared"),
+      "@assets": path.resolve(__dirname, "attached_assets"),
     },
   },
-  root: path.resolve(import.meta.dirname, "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(__dirname, "dist"), // Netlify publish directory
     emptyOutDir: true,
+    sourcemap: false,
   },
   server: {
     fs: {
