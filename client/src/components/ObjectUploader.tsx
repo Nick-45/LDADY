@@ -2,56 +2,25 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import Uppy from "@uppy/core";
 import { DashboardModal } from "@uppy/react";
-import AwsS3 from "@uppy/aws-s3";
 import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabaseClient"; // make sure your supabase client is correctly exported
 
 interface ObjectUploaderProps {
   maxNumberOfFiles?: number;
   maxFileSize?: number;
-  onGetUploadParameters: () => Promise<{
-    method: "PUT";
-    url: string;
-  }>;
-  onComplete?: (
-    result: UploadResult<Record<string, unknown>, Record<string, unknown>>
-  ) => void;
+  bucket: string; // Supabase bucket name
+  path?: string; // optional path prefix in bucket
+  onComplete?: (uploadedFiles: { name: string; path: string }[]) => void;
   buttonClassName?: string;
   children: ReactNode;
 }
 
-/**
- * A file upload component that renders as a button and provides a modal interface for
- * file management.
- * 
- * Features:
- * - Renders as a customizable button that opens a file upload modal
- * - Provides a modal interface for:
- *   - File selection
- *   - File preview
- *   - Upload progress tracking
- *   - Upload status display
- * 
- * The component uses Uppy under the hood to handle all file upload functionality.
- * All file management features are automatically handled by the Uppy dashboard modal.
- * 
- * @param props - Component props
- * @param props.maxNumberOfFiles - Maximum number of files allowed to be uploaded
- *   (default: 1)
- * @param props.maxFileSize - Maximum file size in bytes (default: 10MB)
- * @param props.onGetUploadParameters - Function to get upload parameters (method and URL).
- *   Typically used to fetch a presigned URL from the backend server for direct-to-S3
- *   uploads.
- * @param props.onComplete - Callback function called when upload is complete. Typically
- *   used to make post-upload API calls to update server state and set object ACL
- *   policies.
- * @param props.buttonClassName - Optional CSS class name for the button
- * @param props.children - Content to be rendered inside the button
- */
 export function ObjectUploader({
   maxNumberOfFiles = 1,
-  maxFileSize = 10485760, // 10MB default
-  onGetUploadParameters,
+  maxFileSize = 10485760, // 10MB
+  bucket,
+  path = "",
   onComplete,
   buttonClassName,
   children,
@@ -62,25 +31,40 @@ export function ObjectUploader({
       restrictions: {
         maxNumberOfFiles,
         maxFileSize,
-        allowedFileTypes: ['image/*'], // Only allow images for profile uploads
+        allowedFileTypes: ["image/*"], // only images
       },
       autoProceed: false,
+    }).on("complete", async (result: UploadResult) => {
+      const uploadedFiles: { name: string; path: string }[] = [];
+
+      for (const file of result.successful) {
+        try {
+          const filePath = `${path}${file.name}`;
+          const { data, error } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, file.data, { upsert: true });
+
+          if (error) throw error;
+
+          uploadedFiles.push({ name: file.name, path: data.path });
+        } catch (err) {
+          console.error("Supabase upload error:", err);
+        }
+      }
+
+      if (uploadedFiles.length > 0) {
+        onComplete?.(uploadedFiles);
+      }
+
+      setShowModal(false);
     })
-      .use(AwsS3, {
-        shouldUseMultipart: false,
-        getUploadParameters: onGetUploadParameters,
-      })
-      .on("complete", (result) => {
-        onComplete?.(result);
-        setShowModal(false);
-      })
   );
 
   return (
     <div>
-      <Button 
+      <Button
         type="button"
-        onClick={() => setShowModal(true)} 
+        onClick={() => setShowModal(true)}
         className={buttonClassName}
         data-testid="upload-button"
       >
