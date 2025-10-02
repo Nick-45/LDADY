@@ -1,7 +1,7 @@
 // components/vroom/VroomProductsPage.tsx
 import { useState, useEffect } from "react";
 import { useRoute } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import ProductCard from "@/components/product/ProductCard";
 import { Button } from "@/components/ui/button";
@@ -23,15 +23,28 @@ export default function VroomProductsPage() {
   const fetchVroomData = async (vroomId: string) => {
     try {
       setLoading(true);
-      const response = await apiRequest("GET", `/api/vrooms/${vroomId}`);
-      const vroomData = await response.json();
+
+      // Fetch vroom info
+      const { data: vroomData, error: vroomError } = await supabase
+        .from("vrooms")
+        .select("*")
+        .eq("id", vroomId)
+        .single();
+
+      if (vroomError) throw vroomError;
       setVroom(vroomData);
 
       // Fetch products in this vroom
-      const productsResponse = await apiRequest("GET", `/api/vrooms/${vroomId}/products`);
-      const productsData = await productsResponse.json();
-      setProducts(productsData);
-    } catch (error) {
+      const { data: productsData, error: productsError } = await supabase
+        .from("products")
+        .select("*")
+        .eq("vroom_id", vroomId)
+        .order("created_at", { ascending: false });
+
+      if (productsError) throw productsError;
+      setProducts(productsData || []);
+    } catch (error: any) {
+      console.error(error);
       toast({
         title: "Error",
         description: "Failed to load vroom data",
@@ -59,9 +72,9 @@ export default function VroomProductsPage() {
           Back
         </Button>
         <div className="flex items-center gap-3">
-          {vroom.coverImageUrl ? (
+          {vroom.coverImage_url ? (
             <img
-              src={vroom.coverImageUrl}
+              src={vroom.coverImage_url}
               alt={vroom.name}
               className="w-16 h-16 object-cover rounded-lg"
             />
