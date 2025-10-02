@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase"; // ✅ Vite-compatible client
+import { supabase } from "@/lib/supabaseClient"; // ✅ Vite-compatible client
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
