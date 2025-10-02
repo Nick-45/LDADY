@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase"; // Vite-compatible Supabase client
+import { supabase } from "@/lib/supabaseClient"; // Vite-compatible Supabase client
 import { useAuth } from "@/hooks/useAuth";
 import Sidebar from "@/components/layout/Sidebar";
 import RightSidebar from "@/components/layout/RightSidebar";
