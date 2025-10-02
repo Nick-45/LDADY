@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabaseClient"; // ✅ Use your Supabase client
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FaStore, FaPlus, FaCheck } from "react-icons/fa";
+import { FaStore, FaCheck } from "react-icons/fa";
 
 interface AddProductToVroomModalProps {
   isOpen: boolean;
@@ -21,92 +21,91 @@ interface AddProductToVroomModalProps {
   productName: string;
 }
 
-export default function AddProductToVroomModal({ 
-  isOpen, 
-  onClose, 
-  productId, 
-  productName 
+export default function AddProductToVroomModal({
+  isOpen,
+  onClose,
+  productId,
+  productName,
 }: AddProductToVroomModalProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [selectedVrooms, setSelectedVrooms] = useState<string[]>([]);
 
   // Fetch user's vrooms
   const { data: userVrooms, isLoading } = useQuery({
-    queryKey: ["/api/vrooms/user"],
+    queryKey: ["vrooms-user", user?.id],
     enabled: isOpen && !!user,
-    retry: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vrooms")
+        .select("*")
+        .eq("user_id", user?.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
   });
 
-  // Fetch current product's vrooms
+  // Fetch which vrooms currently include this product
   const { data: productVrooms } = useQuery({
-    queryKey: ["/api/products", productId, "vrooms"],
+    queryKey: ["product-vrooms", productId],
     enabled: isOpen && !!productId,
-    retry: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vroom_products")
+        .select("vroom_id")
+        .eq("product_id", productId);
+      if (error) throw error;
+      return data?.map((row) => row.vroom_id) || [];
+    },
   });
 
   const addToVroomMutation = useMutation({
-    mutationFn: async ({ vroomId, productId }: { vroomId: string; productId: string }) => {
-      return await apiRequest("POST", `/api/vrooms/${vroomId}/products`, { productId });
+    mutationFn: async (vroomId: string) => {
+      const { data, error } = await supabase
+        .from("vroom_products")
+        .insert([{ vroom_id: vroomId, product_id: productId }]);
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Product added to vroom successfully!",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/vrooms"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products", productId, "vrooms"] });
+      toast({ title: "Success", description: "Product added to vroom!" });
+      queryClient.invalidateQueries({ queryKey: ["vrooms-user", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["product-vrooms", productId] });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error?.message || "Failed to add product to vroom",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to add product", variant: "destructive" });
     },
   });
 
   const removeFromVroomMutation = useMutation({
-    mutationFn: async ({ vroomId, productId }: { vroomId: string; productId: string }) => {
-      return await apiRequest("DELETE", `/api/vrooms/${vroomId}/products/${productId}`);
+    mutationFn: async (vroomId: string) => {
+      const { data, error } = await supabase
+        .from("vroom_products")
+        .delete()
+        .match({ vroom_id: vroomId, product_id: productId });
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Product removed from vroom successfully!",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/vrooms"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products", productId, "vrooms"] });
+      toast({ title: "Success", description: "Product removed from vroom!" });
+      queryClient.invalidateQueries({ queryKey: ["vrooms-user", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["product-vrooms", productId] });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error?.message || "Failed to remove product from vroom",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to remove product", variant: "destructive" });
     },
   });
 
   const handleVroomToggle = (vroomId: string) => {
-    const currentProductVrooms = Array.isArray(productVrooms) ? productVrooms.map((v: any) => v.id) : [];
-    const isCurrentlyInVroom = currentProductVrooms.includes(vroomId);
-
-    if (isCurrentlyInVroom) {
-      removeFromVroomMutation.mutate({ vroomId, productId });
-    } else {
-      addToVroomMutation.mutate({ vroomId, productId });
-    }
-  };
-
-  const isProductInVroom = (vroomId: string) => {
-    if (!Array.isArray(productVrooms)) return false;
-    return productVrooms.some((v: any) => v.id === vroomId);
+    const isInVroom = productVrooms?.includes(vroomId);
+    if (isInVroom) removeFromVroomMutation.mutate(vroomId);
+    else addToVroomMutation.mutate(vroomId);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto" data-testid="add-product-to-vroom-modal">
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FaStore className="text-primary" />
@@ -121,53 +120,44 @@ export default function AddProductToVroomModal({
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : userVrooms && Array.isArray(userVrooms) && userVrooms.length > 0 ? (
+          ) : userVrooms && userVrooms.length > 0 ? (
             <div className="space-y-3">
               {userVrooms.map((vroom: any) => {
-                const isInVroom = isProductInVroom(vroom.id);
-                const isProcessing = addToVroomMutation.isPending || removeFromVroomMutation.isPending;
-                
+                const isInVroom = productVrooms?.includes(vroom.id);
+                const isProcessing = addToVroomMutation.isLoading || removeFromVroomMutation.isLoading;
+
                 return (
                   <Card
                     key={vroom.id}
-                    className={`cursor-pointer transition-all ${
-                      isInVroom ? 'ring-2 ring-primary' : 'hover:shadow-md'
-                    }`}
+                    className={`cursor-pointer transition-all ${isInVroom ? "ring-2 ring-primary" : "hover:shadow-md"}`}
                     onClick={() => !isProcessing && handleVroomToggle(vroom.id)}
-                    data-testid={`vroom-option-${vroom.id}`}
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3">
-                        {vroom.coverImageUrl ? (
-                          <img
-                            src={vroom.coverImageUrl}
-                            alt={vroom.name}
-                            className="w-12 h-12 rounded-lg object-cover"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
-                            <FaStore className="text-muted-foreground" />
-                          </div>
-                        )}
-                        
-                        <div className="flex-1">
-                          <h4 className="font-medium">{vroom.name}</h4>
-                          {vroom.description && (
-                            <p className="text-sm text-muted-foreground line-clamp-1">
-                              {vroom.description}
-                            </p>
-                          )}
+                    <CardContent className="p-4 flex items-center gap-3">
+                      {vroom.cover_image_url ? (
+                        <img
+                          src={vroom.cover_image_url}
+                          alt={vroom.name}
+                          className="w-12 h-12 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
+                          <FaStore className="text-muted-foreground" />
                         </div>
+                      )}
 
-                        <div className="flex items-center">
-                          {isInVroom ? (
-                            <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                              <FaCheck className="text-primary-foreground text-xs" />
-                            </div>
-                          ) : (
-                            <div className="w-6 h-6 rounded-full border-2 border-muted-foreground/30" />
-                          )}
-                        </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium">{vroom.name}</h4>
+                        {vroom.description && <p className="text-sm text-muted-foreground line-clamp-1">{vroom.description}</p>}
+                      </div>
+
+                      <div className="flex items-center">
+                        {isInVroom ? (
+                          <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                            <FaCheck className="text-primary-foreground text-xs" />
+                          </div>
+                        ) : (
+                          <div className="w-6 h-6 rounded-full border-2 border-muted-foreground/30" />
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -183,12 +173,7 @@ export default function AddProductToVroomModal({
           )}
 
           <div className="flex gap-3 pt-4">
-            <Button 
-              variant="outline" 
-              onClick={onClose}
-              className="flex-1"
-              data-testid="button-close-add-to-vroom"
-            >
+            <Button variant="outline" onClick={onClose} className="flex-1">
               Done
             </Button>
           </div>
