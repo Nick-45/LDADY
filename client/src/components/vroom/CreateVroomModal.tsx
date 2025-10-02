@@ -1,8 +1,7 @@
 import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
-import { ObjectUploader } from "@/components/ObjectUploader";
+import { supabase } from "@/lib/supabaseClient"; // ✅ Use your Supabase client
 import {
   Dialog,
   DialogContent,
@@ -17,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FaPlus, FaStore, FaCamera, FaLink, FaTimes } from "react-icons/fa";
-import type { UploadResult } from "@uppy/core";
 
 interface CreateVroomModalProps {
   trigger?: React.ReactNode;
@@ -41,15 +39,18 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
 
   const createVroomMutation = useMutation({
     mutationFn: async (data: any) => {
-      return await apiRequest("POST", "/api/vrooms", data);
+      // Insert into Supabase 'vrooms' table
+      const { data: vroom, error } = await supabase.from("vrooms").insert([data]).select().single();
+      if (error) throw error;
+      return vroom;
     },
     onSuccess: () => {
       toast({
         title: "Success",
         description: "Vroom created successfully!",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/vrooms"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/vrooms/user"] });
+      queryClient.invalidateQueries({ queryKey: ["vrooms"] });
+      queryClient.invalidateQueries({ queryKey: ["vrooms-user"] });
       handleClose();
     },
     onError: (error: any) => {
@@ -61,114 +62,49 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
     },
   });
 
-  const handleGetUploadParameters = async () => {
-    const response = await apiRequest('POST', '/api/objects/upload') as { uploadURL: string };
-    return {
-      method: 'PUT' as const,
-      url: response.uploadURL,
-    };
-  };
-
-  const handleImageUpload = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
-    if (result.successful && result.successful.length > 0) {
-      const uploadedFile = result.successful[0];
-      try {
-        const response = await apiRequest("PUT", "/api/vroom-images", {
-          imageURL: uploadedFile.uploadURL,
-        });
-        const data = await response.json();
-        setCoverImageUrl(data.objectPath);
-
-        toast({
-          title: "Success",
-          description: "Cover image uploaded successfully!",
-        });
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to process uploaded image",
-          variant: "destructive",
-        });
-      }
-    }
-  };
-
-  const handleAddUrlImage = () => {
-    if (!imageUrlInput) {
-      toast({
-        title: "Error",
-        description: "Please enter an image URL",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      // Basic URL validation
-      new URL(imageUrlInput);
-      setCoverImageUrl(imageUrlInput);
-      setImageUrlInput("");
-
-      toast({
-        title: "Success",
-        description: "Image URL added successfully!",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Please enter a valid URL",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const file = files[0];
-    if (file.size > 5 * 1024 * 1024) { // 5MB limit
-      toast({
-        title: "Error",
-        description: "File is too large. Maximum size is 5MB.",
-        variant: "destructive",
-      });
+    if (file.size > 5 * 1024 * 1024) { // 5MB
+      toast({ title: "Error", description: "File too large (max 5MB)", variant: "destructive" });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const imageUrl = event.target?.result as string;
-      setCoverImageUrl(imageUrl);
+    // Upload to Supabase Storage
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const { data, error } = await supabase.storage.from("vroom-covers").upload(fileName, file);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
 
-      toast({
-        title: "Success",
-        description: "Image uploaded successfully!",
-      });
-    };
-    reader.readAsDataURL(file);
+    const publicUrl = supabase.storage.from("vroom-covers").getPublicUrl(fileName).data.publicUrl;
+    setCoverImageUrl(publicUrl || "");
+    toast({ title: "Success", description: "Cover image uploaded successfully!" });
+  };
 
-    // Reset the file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+  const handleAddUrlImage = () => {
+    if (!imageUrlInput) return toast({ title: "Error", description: "Enter image URL", variant: "destructive" });
+    try {
+      new URL(imageUrlInput); // validate URL
+      setCoverImageUrl(imageUrlInput);
+      setImageUrlInput("");
+      toast({ title: "Success", description: "Image URL added!" });
+    } catch {
+      toast({ title: "Error", description: "Invalid URL", variant: "destructive" });
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!formData.name.trim()) {
-      toast({
-        title: "Error",
-        description: "Vroom name is required",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!formData.name.trim()) return toast({ title: "Error", description: "Vroom name required", variant: "destructive" });
 
     createVroomMutation.mutate({
       ...formData,
-      coverImageUrl: coverImageUrl || null,
+      cover_image_url: coverImageUrl || null,
     });
   };
 
@@ -177,11 +113,8 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
     setCoverImageUrl("");
     setImageUrlInput("");
     setActiveTab("upload");
-    if (onClose) {
-      onClose();
-    } else {
-      setModalOpen(false);
-    }
+    if (onClose) onClose();
+    else setModalOpen(false);
   };
 
   const open = isOpen !== undefined ? isOpen : modalOpen;
@@ -189,25 +122,20 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {trigger && (
+      {trigger ? (
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+      ) : (
         <DialogTrigger asChild>
-          {trigger}
-        </DialogTrigger>
-      )}
-      {!trigger && (
-        <DialogTrigger asChild>
-          <Button className="flex items-center gap-2" data-testid="button-create-vroom">
-            <FaPlus />
-            Create Vroom
+          <Button className="flex items-center gap-2">
+            <FaPlus /> Create Vroom
           </Button>
         </DialogTrigger>
       )}
 
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="create-vroom-modal">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FaStore className="text-primary" />
-            Create New Vroom
+            <FaStore className="text-primary" /> Create New Vroom
           </DialogTitle>
         </DialogHeader>
 
@@ -220,7 +148,6 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
               onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               placeholder="Enter vroom name..."
               required
-              data-testid="input-vroom-name"
             />
           </div>
 
@@ -232,27 +159,23 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               placeholder="Describe your vroom..."
               rows={3}
-              data-testid="input-vroom-description"
             />
           </div>
 
           <div className="space-y-2">
             <Label>Cover Image</Label>
-
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid grid-cols-2 mb-3">
                 <TabsTrigger value="upload" className="flex items-center gap-2">
-                  <FaCamera className="h-3 w-3" />
-                  Upload
+                  <FaCamera className="h-3 w-3" /> Upload
                 </TabsTrigger>
                 <TabsTrigger value="url" className="flex items-center gap-2">
-                  <FaLink className="h-3 w-3" />
-                  URL
+                  <FaLink className="h-3 w-3" /> URL
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="upload" className="space-y-3">
-                <div 
+                <div
                   className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-primary transition-colors"
                   onClick={() => fileInputRef.current?.click()}
                 >
@@ -277,11 +200,7 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
                     placeholder="Paste image URL here"
                     className="flex-1"
                   />
-                  <Button 
-                    type="button" 
-                    onClick={handleAddUrlImage}
-                    disabled={!imageUrlInput}
-                  >
+                  <Button type="button" onClick={handleAddUrlImage} disabled={!imageUrlInput}>
                     Add Image
                   </Button>
                 </div>
@@ -290,11 +209,7 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
 
             {coverImageUrl && (
               <div className="mt-3 relative">
-                <img
-                  src={coverImageUrl}
-                  alt="Cover preview"
-                  className="w-full h-32 object-cover rounded-lg"
-                />
+                <img src={coverImageUrl} alt="Cover preview" className="w-full h-32 object-cover rounded-lg" />
                 <Button
                   type="button"
                   variant="destructive"
@@ -313,26 +228,15 @@ export default function CreateVroomModal({ trigger, isOpen, onClose }: CreateVro
               id="public"
               checked={formData.isPublic}
               onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isPublic: checked }))}
-              data-testid="switch-vroom-public"
             />
             <Label htmlFor="public">Make this vroom public</Label>
           </div>
 
           <div className="flex gap-3 pt-4">
-            <Button 
-              type="submit" 
-              disabled={createVroomMutation.isPending}
-              className="flex-1"
-              data-testid="button-submit-vroom"
-            >
+            <Button type="submit" disabled={createVroomMutation.isPending} className="flex-1">
               {createVroomMutation.isPending ? "Creating..." : "Create Vroom"}
             </Button>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={handleClose}
-              data-testid="button-cancel-vroom"
-            >
+            <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
           </div>
