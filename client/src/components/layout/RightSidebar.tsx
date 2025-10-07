@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FaSearch, FaChartLine, FaStore, FaComments, FaTimes } from "react-icons/fa";
+import { FaSearch, FaChartLine, FaStore } from "react-icons/fa";
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 
@@ -34,34 +34,25 @@ const getStellaResponse = (message: string): string => {
   if (stellaKB.greetings.user.some((g) => lowerMsg.includes(g))) {
     return stellaKB.greetings.bot[Math.floor(Math.random() * stellaKB.greetings.bot.length)];
   }
-  if (lowerMsg.includes("fashion"))
-    return stellaKB.fashion_basics.what_is_fashion;
-  if (lowerMsg.includes("style"))
-    return stellaKB.fashion_basics.fashion_vs_style;
+  if (lowerMsg.includes("fashion")) return stellaKB.fashion_basics.what_is_fashion;
+  if (lowerMsg.includes("style")) return stellaKB.fashion_basics.fashion_vs_style;
   return "Hmm 🤔 I’m Stella, your fashion assistant. Ask me about trends, style, or shopping!";
 };
 
 export default function RightSidebar() {
   const { data: trendingVrooms, isLoading: vroomsLoading } = useQuery({
     queryKey: ["/api/vrooms/trending"],
-    queryFn: async () => {
-      const res = await fetch("/api/vrooms/trending");
-      return res.json();
-    },
+    queryFn: async () => (await fetch("/api/vrooms/trending")).json(),
     retry: false,
   });
 
   const { data: trendingHashtags, isLoading: hashtagsLoading } = useQuery({
     queryKey: ["/api/hashtags/trending"],
-    queryFn: async () => {
-      const res = await fetch("/api/hashtags/trending");
-      return res.json();
-    },
+    queryFn: async () => (await fetch("/api/hashtags/trending")).json(),
     retry: false,
   });
 
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [messages, setMessages] = useState<{ sender: string; text: string }[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -85,101 +76,50 @@ export default function RightSidebar() {
     }, 1000);
   };
 
+  // Render desktop only
   return (
-    <>
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:flex fixed right-0 top-0 h-screen w-80 bg-white p-4 flex-col border-l shadow-sm z-40">
-        <SidebarContent
-          trendingHashtags={trendingHashtags}
-          hashtagsLoading={hashtagsLoading}
-          trendingVrooms={trendingVrooms}
-          vroomsLoading={vroomsLoading}
-        />
+    <div className="hidden lg:flex flex-col h-full p-4 bg-white border-l shadow-sm w-80">
+      <SidebarContent
+        trendingHashtags={trendingHashtags}
+        hashtagsLoading={hashtagsLoading}
+        trendingVrooms={trendingVrooms}
+        vroomsLoading={vroomsLoading}
+      />
 
-        {/* Floating Stella Button */}
-        <button
-          onClick={() => setIsChatOpen(!isChatOpen)}
-          className="fixed bottom-6 right-6 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-primary/90 transition"
-        >
-          <FaComments size={20} />
-        </button>
-
-        {/* Chat Window */}
-        {isChatOpen && (
-          <ChatWindow
-            messages={messages}
-            input={input}
-            setInput={setInput}
-            sendMessage={sendMessage}
-            isTyping={isTyping}
-            chatEndRef={chatEndRef}
-            setIsChatOpen={setIsChatOpen}
-          />
-        )}
-      </div>
-
-      {/* Mobile Floating Button */}
+      {/* Floating Stella Chat Button */}
       <button
-        onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-        className="lg:hidden fixed bottom-6 right-6 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-primary/90 transition z-50"
+        onClick={() => setIsChatOpen(!isChatOpen)}
+        className="fixed bottom-6 right-6 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-primary/90 transition"
       >
-        {isMobileSidebarOpen ? <FaTimes size={20} /> : <FaComments size={20} />}
+        💬
       </button>
 
-      {/* Mobile Slide-In Sidebar */}
-      <div
-        className={`lg:hidden fixed top-0 right-0 h-screen w-4/5 sm:w-2/3 bg-white border-l shadow-lg transform transition-transform duration-300 z-40 ${
-          isMobileSidebarOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        <div className="p-4 flex flex-col h-full">
-          <SidebarContent
-            trendingHashtags={trendingHashtags}
-            hashtagsLoading={hashtagsLoading}
-            trendingVrooms={trendingVrooms}
-            vroomsLoading={vroomsLoading}
-          />
-          <Button
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            className="mt-auto w-full bg-primary text-white"
-          >
-            Chat with Stella 💬
-          </Button>
-        </div>
-
-        {isChatOpen && (
-          <ChatWindow
-            messages={messages}
-            input={input}
-            setInput={setInput}
-            sendMessage={sendMessage}
-            isTyping={isTyping}
-            chatEndRef={chatEndRef}
-            setIsChatOpen={setIsChatOpen}
-          />
-        )}
-      </div>
-    </>
+      {isChatOpen && (
+        <ChatWindow
+          messages={messages}
+          input={input}
+          setInput={setInput}
+          sendMessage={sendMessage}
+          isTyping={isTyping}
+          chatEndRef={chatEndRef}
+          setIsChatOpen={setIsChatOpen}
+        />
+      )}
+    </div>
   );
 }
 
-/* Reusable Sidebar Content Component */
-function SidebarContent({
-  trendingHashtags,
-  hashtagsLoading,
-  trendingVrooms,
-  vroomsLoading,
-}: any) {
+function SidebarContent({ trendingHashtags, hashtagsLoading, trendingVrooms, vroomsLoading }: any) {
   return (
     <div className="flex-1 overflow-y-auto space-y-6">
       {/* Search */}
       <div className="bg-muted rounded-full p-3">
         <div className="flex items-center space-x-3">
           <FaSearch className="text-muted-foreground" />
-          <Input
+          <input
             type="text"
             placeholder="Search products and vrooms..."
-            className="bg-transparent outline-none border-none focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="bg-transparent outline-none flex-1"
           />
         </div>
       </div>
@@ -199,16 +139,11 @@ function SidebarContent({
               </div>
             ) : trendingHashtags && trendingHashtags.length > 0 ? (
               trendingHashtags.map((item: any) => (
-                <Link
-                  key={item.tag}
-                  href={`/hashtags/${encodeURIComponent(item.tag)}`}
-                >
+                <Link key={item.tag} href={`/hashtags/${encodeURIComponent(item.tag)}`}>
                   <div className="p-4 hover:bg-muted/30 transition-colors cursor-pointer flex justify-between items-center">
                     <div>
                       <p className="font-medium">{item.tag}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {item.count} products
-                      </p>
+                      <p className="text-sm text-muted-foreground">{item.count} products</p>
                     </div>
                     <FaChartLine className="text-accent" />
                   </div>
@@ -274,42 +209,25 @@ function SidebarContent({
   );
 }
 
-/* Chat Window Component */
-function ChatWindow({
-  messages,
-  input,
-  setInput,
-  sendMessage,
-  isTyping,
-  chatEndRef,
-  setIsChatOpen,
-}: any) {
+function ChatWindow({ messages, input, setInput, sendMessage, isTyping, chatEndRef, setIsChatOpen }: any) {
   return (
     <div className="fixed bottom-20 right-6 w-80 h-96 bg-white border border-gray-300 shadow-lg rounded-xl flex flex-col z-50">
       <div className="bg-primary text-white p-3 rounded-t-xl font-semibold flex justify-between items-center">
         <span>Stella 💬 — Eldady Assistant</span>
-        <button onClick={() => setIsChatOpen(false)}>
-          <FaTimes />
-        </button>
+        <button onClick={() => setIsChatOpen(false)}>✖</button>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-2 text-sm">
         {messages.map((msg: any, i: number) => (
           <div
             key={i}
             className={`p-2 rounded-lg max-w-[80%] ${
-              msg.sender === "user"
-                ? "bg-primary text-white ml-auto"
-                : "bg-gray-100 text-gray-800 mr-auto"
+              msg.sender === "user" ? "bg-primary text-white ml-auto" : "bg-gray-100 text-gray-800 mr-auto"
             }`}
           >
             {msg.text}
           </div>
         ))}
-        {isTyping && (
-          <div className="bg-gray-100 text-gray-600 p-2 rounded-lg mr-auto inline-block animate-pulse">
-            Stella is typing...
-          </div>
-        )}
+        {isTyping && <div className="bg-gray-100 text-gray-600 p-2 rounded-lg mr-auto animate-pulse">Stella is typing...</div>}
         <div ref={chatEndRef} />
       </div>
       <div className="p-3 border-t flex space-x-2">
