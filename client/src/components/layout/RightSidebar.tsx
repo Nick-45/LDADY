@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FaSearch, FaChartLine, FaStore, FaComments } from "react-icons/fa";
+import { FaSearch, FaChartLine, FaStore, FaComments, FaTimes } from "react-icons/fa";
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 
@@ -16,9 +16,9 @@ const stellaKB = {
       "Hello! How can I help you today?",
       "Hey! Great to see you here.",
       "Good morning! Hope your day is going well. 🌞",
-      "Good afternoon! How’s your day so far?",
+      "Good afternoon! How's your day so far?",
       "Good evening! Ready to explore some fashion?",
-      "I’m doing great, thanks for asking! How about you?",
+      "I'm doing great, thanks for asking! How about you?",
       "All good here, what about you?",
       "Yo! 😎",
       "Sup! How can I assist?",
@@ -140,10 +140,16 @@ const getStellaResponse = (message: string): string => {
   if (lowerMsg.includes("payment")) return "Payment methods:\n" + stellaKB.shopping_process.payment_methods.join("\n");
   if (lowerMsg.includes("time")) return stellaKB.shopping_process.delivery_time;
 
-  return "Hmm 🤔 I’m Stella, Eldady’s fashion assistant. That’s a bit tricky! You can also reach us at 📧 support@eldady.com or 📱 WhatsApp +254-700-123456.";
+  return "Hmm 🤔 I'm Stella, Eldady's fashion assistant. That's a bit tricky! You can also reach us at 📧 support@eldady.com or 📱 WhatsApp +254-700-123456.";
 };
 
-export default function RightSidebar() {
+interface RightSidebarProps {
+  isMobile?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function RightSidebar({ isMobile = false, isOpen = false, onClose }: RightSidebarProps) {
   // --- Fetch Trending Data ---
   const { data: trendingVrooms, isLoading: vroomsLoading } = useQuery({
     queryKey: ["/api/vrooms/trending"],
@@ -211,8 +217,30 @@ export default function RightSidebar() {
     }
   };
 
-  return (
-    <div className="fixed right-0 top-0 h-screen w-80 bg-white p-4 flex flex-col">
+  // Main sidebar content
+  const sidebarContent = (
+    <div className={`
+      bg-white flex flex-col
+      ${isMobile 
+        ? "w-full h-full p-4" 
+        : "fixed right-0 top-0 h-screen w-80 p-4"
+      }
+    `}>
+      {/* Mobile Header */}
+      {isMobile && (
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
+          <h2 className="text-xl font-bold">Explore</h2>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-8 w-8"
+          >
+            <FaTimes size={16} />
+          </Button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto">
         {/* Search */}
         <div className="bg-muted rounded-full p-3 mb-6">
@@ -244,6 +272,7 @@ export default function RightSidebar() {
                   <Link
                     key={item.tag}
                     href={`/hashtags/${encodeURIComponent(item.tag)}`}
+                    onClick={isMobile ? onClose : undefined}
                   >
                     <div className="p-4 hover:bg-muted/30 transition-colors cursor-pointer flex justify-between items-center">
                       <div>
@@ -282,23 +311,27 @@ export default function RightSidebar() {
                 trendingVrooms.slice(0, 3).map((vroom: any) => {
                   const isFollowing = followingStates[vroom.id] || false;
                   return (
-                    <Link key={vroom.id} href={`/vrooms/${vroom.id}`}>
+                    <Link 
+                      key={vroom.id} 
+                      href={`/vrooms/${vroom.id}`}
+                      onClick={isMobile ? onClose : undefined}
+                    >
                       <div className="p-4 hover:bg-muted/30 transition-colors cursor-pointer flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-3 min-w-0 flex-1">
                           {vroom.coverImageUrl ? (
                             <img
                               src={vroom.coverImageUrl}
                               alt={vroom.name}
-                              className="w-10 h-10 rounded-lg object-cover"
+                              className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
                             />
                           ) : (
-                            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
                               <FaStore className="text-muted-foreground" />
                             </div>
                           )}
-                          <div className="flex-1">
-                            <p className="font-medium">{vroom.name}</p>
-                            <p className="text-sm text-muted-foreground">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{vroom.name}</p>
+                            <p className="text-sm text-muted-foreground truncate">
                               {formatCount(vroom.productsCount || 0)} products •{" "}
                               {formatCount(vroom.followersCount || 0)} followers
                             </p>
@@ -312,6 +345,7 @@ export default function RightSidebar() {
                             e.stopPropagation();
                             handleFollowToggle(vroom.id);
                           }}
+                          className="flex-shrink-0 ml-2"
                         >
                           {isFollowing ? "Following" : "Follow"}
                         </Button>
@@ -329,19 +363,62 @@ export default function RightSidebar() {
         </Card>
       </div>
 
+      {/* Footer - Only show on desktop */}
+      {!isMobile && (
+        <div className="py-4 border-t border-border mt-auto text-center text-xs text-muted-foreground">
+          <div className="mb-2">
+            © {new Date().getFullYear()} Eldady. All Rights Reserved.
+          </div>
+          <div className="flex justify-center space-x-4">
+            <Link href="/terms-of-service">
+              <span className="hover:text-foreground cursor-pointer transition-colors">
+                Terms of Service
+              </span>
+            </Link>
+            <Link href="/privacy-policy">
+              <span className="hover:text-foreground cursor-pointer transition-colors">
+                Privacy Policy
+              </span>
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // Stella Chat Components (same for both mobile and desktop)
+  const stellaChat = (
+    <>
       {/* Floating Stella Button */}
       <button
         onClick={() => setIsChatOpen(!isChatOpen)}
-        className="fixed bottom-6 right-6 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-primary/90 transition"
+        className={`
+          bg-primary text-white p-4 rounded-full shadow-lg hover:bg-primary/90 transition z-40
+          ${isMobile ? "fixed bottom-6 right-6" : "fixed bottom-6 right-6"}
+        `}
       >
         <FaComments size={20} />
       </button>
 
       {/* Stella Chat Window */}
       {isChatOpen && (
-        <div className="fixed bottom-20 right-6 w-80 h-96 bg-white border border-gray-300 shadow-lg rounded-xl flex flex-col z-50">
-          <div className="bg-primary text-white p-3 rounded-t-xl font-semibold">
-            Stella 💬 — Eldady Assistant
+        <div className={`
+          fixed bg-white border border-gray-300 shadow-lg rounded-xl flex flex-col z-50
+          ${isMobile 
+            ? "bottom-20 right-4 left-4 h-96" 
+            : "bottom-20 right-6 w-80 h-96"
+          }
+        `}>
+          <div className="bg-primary text-white p-3 rounded-t-xl font-semibold flex justify-between items-center">
+            <span>Stella 💬 — Eldady Assistant</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsChatOpen(false)}
+              className="h-6 w-6 p-0 hover:bg-primary/80"
+            >
+              <FaTimes size={12} />
+            </Button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2 text-sm">
             {messages.map((msg, idx) => (
@@ -353,7 +430,9 @@ export default function RightSidebar() {
                     : "bg-gray-100 text-gray-800 mr-auto"
                 }`}
               >
-                {msg.text}
+                {msg.text.split('\n').map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
               </div>
             ))}
             {isTyping && (
@@ -367,32 +446,41 @@ export default function RightSidebar() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
               placeholder="Type your message..."
+              className="flex-1"
             />
             <Button onClick={sendMessage}>Send</Button>
           </div>
         </div>
       )}
+    </>
+  );
 
-      {/* Footer */}
-      <div className="py-4 border-t border-border mt-auto text-center text-xs text-muted-foreground">
-        <div className="mb-2">
-          © {new Date().getFullYear()} Eldady. All Rights Reserved.
+  // Return based on mobile/desktop
+  if (isMobile) {
+    return (
+      <>
+        <div className={`
+          fixed inset-0 bg-black/50 z-40 transition-opacity duration-300
+          ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+        `} onClick={onClose} />
+        <div className={`
+          fixed top-0 right-0 h-full w-4/5 max-w-sm bg-white z-50 transform transition-transform duration-300
+          ${isOpen ? 'translate-x-0' : 'translate-x-full'}
+        `}>
+          {sidebarContent}
         </div>
-        <div className="flex justify-center space-x-4">
-          <Link href="/terms-of-service">
-            <span className="hover:text-foreground cursor-pointer transition-colors">
-              Terms of Service
-            </span>
-          </Link>
-          <Link href="/privacy-policy">
-            <span className="hover:text-foreground cursor-pointer transition-colors">
-              Privacy Policy
-            </span>
-          </Link>
-        </div>
-      </div>
-    </div>
+        {stellaChat}
+      </>
+    );
+  }
+
+  // Desktop version
+  return (
+    <>
+      {sidebarContent}
+      {stellaChat}
+    </>
   );
 }
