@@ -55,22 +55,33 @@ export default function Landing() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
+      // 1. Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: signupEmail,
         password: signupPassword,
-        options: {
-          data: {
+      });
+
+      if (authError) throw authError;
+
+      if (authData.user) {
+        // 2. Create profile in profiles table
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
             first_name: firstName,
             second_name: secondName,
             gender: gender,
-            dob: dob,
+            dob: dob || null,
             mobile: mobile,
             country: country
-          }
-        }
-      });
-      if (error) throw error;
-      alert("Check your email for confirmation link!");
+          });
+
+        if (profileError) throw profileError;
+
+        alert("Account created successfully! Please check your email for verification.");
+        setIsSignup(false); // Switch back to login
+      }
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -127,8 +138,8 @@ export default function Landing() {
                 </CardHeader>
                 <CardContent className="px-0 pb-0 space-y-4">
                   <Input
-                    placeholder="Username or Email"
-                    type="text"
+                    placeholder="Email"
+                    type="email"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     className="py-2"
@@ -179,25 +190,23 @@ export default function Landing() {
                     Create your Eldady account
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="px-0 pb-0">
-                  <div className="grid grid-cols-2 gap-3 mb-3">
+                <CardContent className="px-0 pb-0 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <Input
                       placeholder="First Name *"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       className="py-2"
-                      required
                     />
                     <Input
                       placeholder="Second Name *"
                       value={secondName}
                       onChange={(e) => setSecondName(e.target.value)}
                       className="py-2"
-                      required
                     />
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <select 
                       value={gender}
                       onChange={(e) => setGender(e.target.value)}
@@ -210,7 +219,6 @@ export default function Landing() {
                     </select>
                     
                     <Input
-                      placeholder="Date of Birth"
                       type="date"
                       value={dob}
                       onChange={(e) => setDob(e.target.value)}
@@ -223,7 +231,7 @@ export default function Landing() {
                     type="tel"
                     value={mobile}
                     onChange={(e) => setMobile(e.target.value)}
-                    className="mb-3 py-2"
+                    className="py-2"
                   />
                   
                   <Input
@@ -231,15 +239,14 @@ export default function Landing() {
                     type="email"
                     value={signupEmail}
                     onChange={(e) => setSignupEmail(e.target.value)}
-                    className="mb-3 py-2"
-                    required
+                    className="py-2"
                   />
                   
                   <Input
                     placeholder="Country of Residence"
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
-                    className="mb-3 py-2"
+                    className="py-2"
                   />
                   
                   <Input
@@ -247,20 +254,19 @@ export default function Landing() {
                     type="password"
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
-                    className="mb-4 py-2"
-                    required
+                    className="py-2"
                   />
                   
                   <Button
                     onClick={handleSignup}
                     disabled={loading}
-                    className="w-full text-lg py-2"
+                    className="w-full text-lg py-2 mt-2"
                   >
-                    {loading ? "Please wait..." : "Sign Up"}
+                    {loading ? "Creating Account..." : "Sign Up"}
                     <FaArrowRight className="ml-2" />
                   </Button>
                   
-                  <p className="text-sm text-center mt-4">
+                  <p className="text-sm text-center mt-3">
                     Already have an account?{" "}
                     <button
                       className="text-primary underline font-medium"
