@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Home, ShoppingCart, User } from "lucide-react";
 
 // Define TypeScript interface for Product
 interface Product {
@@ -27,7 +27,6 @@ export default function Home() {
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const [showMobileRightSidebar, setShowMobileRightSidebar] = useState(false);
 
   // Check mobile viewport
   useEffect(() => {
@@ -84,18 +83,17 @@ export default function Home() {
     }
   }, [isAuthenticated, authLoading, error, toast, shouldRedirect]);
 
-  // Close mobile sidebars when clicking on main content
+  // Close mobile sidebar when clicking outside
   useEffect(() => {
     const handleClick = () => {
       if (showMobileSidebar) setShowMobileSidebar(false);
-      if (showMobileRightSidebar) setShowMobileRightSidebar(false);
     };
 
-    if (showMobileSidebar || showMobileRightSidebar) {
+    if (showMobileSidebar) {
       document.addEventListener("click", handleClick);
       return () => document.removeEventListener("click", handleClick);
     }
-  }, [showMobileSidebar, showMobileRightSidebar]);
+  }, [showMobileSidebar]);
 
   if (authLoading) {
     return (
@@ -132,62 +130,45 @@ export default function Home() {
               onClick={(e) => {
                 e.stopPropagation();
                 setShowMobileSidebar(!showMobileSidebar);
-                setShowMobileRightSidebar(false);
               }}
             >
               {showMobileSidebar ? <X size={20} /> : <Menu size={20} />}
             </Button>
-            
             <h1 className="text-xl font-bold">Home</h1>
-            
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowMobileRightSidebar(!showMobileRightSidebar);
-                setShowMobileSidebar(false);
-              }}
-            >
-              {showMobileRightSidebar ? <X size={20} /> : <Menu size={20} />}
-            </Button>
+            <div className="w-10" /> {/* Spacer for alignment */}
           </div>
         </div>
       )}
 
       {/* Sidebar */}
-      <div className={`
-        ${isMobile 
+      <div
+        className={`
+        ${isMobile
           ? `fixed top-16 left-0 h-[calc(100vh-4rem)] z-40 transform transition-transform duration-300 ${
-              showMobileSidebar ? 'translate-x-0' : '-translate-x-full'
+              showMobileSidebar ? "translate-x-0" : "-translate-x-full"
             }`
-          : 'fixed left-0 top-0 h-screen'
-        }
-      `}>
-        <div 
-          className={isMobile ? "h-full" : ""}
-          onClick={(e) => e.stopPropagation()}
-        >
+          : "fixed left-0 top-0 h-screen"}
+      `}
+      >
+        <div className={isMobile ? "h-full" : ""} onClick={(e) => e.stopPropagation()}>
           <Sidebar />
         </div>
       </div>
 
       {/* Main Content */}
-      <div className={`
+      <div
+        className={`
         flex-1 w-full
-        ${isMobile 
-          ? 'mt-16 px-0' 
-          : 'ml-20 mr-64'
-        }
-      `}>
+        ${isMobile ? "mt-16 px-0" : "ml-20 mr-64"}
+      `}
+      >
         <div className="flex justify-center">
-          <div className={`
+          <div
+            className={`
             w-full bg-white
-            ${isMobile 
-              ? 'max-w-full' 
-              : 'max-w-2xl border-x border-gray-200 min-h-screen'
-            }
-          `}>
+            ${isMobile ? "max-w-full" : "max-w-2xl border-x border-gray-200 min-h-screen"}
+          `}
+          >
             {/* Desktop Header */}
             {!isMobile && (
               <div className="sticky top-0 bg-card/80 backdrop-blur-sm border-b border-border p-4 z-30">
@@ -206,12 +187,9 @@ export default function Home() {
             )}
 
             {/* Product Feed */}
-            <div className={`
-              divide-y divide-border
-              ${isMobile ? 'px-4' : ''}
-            `}>
+            <div className={`divide-y divide-border ${isMobile ? "px-4" : ""}`}>
               {productsLoading ? (
-                <div className={`space-y-6 ${isMobile ? 'py-4' : 'p-6'}`}>
+                <div className={`space-y-6 ${isMobile ? "py-4" : "p-6"}`}>
                   {[...Array(3)].map((_, i) => (
                     <Card key={i} className={isMobile ? "p-4" : "p-6"}>
                       <CardContent className="space-y-4">
@@ -230,14 +208,10 @@ export default function Home() {
                 </div>
               ) : products && products.length > 0 ? (
                 products.map((product) => (
-                  <ProductPost 
-                    key={product.id} 
-                    product={product} 
-                    compact={isMobile}
-                  />
+                  <ProductPost key={product.id} product={product} compact={isMobile} />
                 ))
               ) : (
-                <div className={`text-center text-muted-foreground ${isMobile ? 'p-8' : 'p-12'}`}>
+                <div className={`text-center text-muted-foreground ${isMobile ? "p-8" : "p-12"}`}>
                   <p className="mb-4">No products found.</p>
                   <p>Start following users or explore trending products!</p>
                 </div>
@@ -247,25 +221,30 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Right Sidebar */}
-      <div className={`
-        ${isMobile 
-          ? `fixed top-16 right-0 h-[calc(100vh-4rem)] z-40 transform transition-transform duration-300 ${
-              showMobileRightSidebar ? 'translate-x-0' : 'translate-x-full'
-            }`
-          : 'fixed right-0 top-0 h-screen'
-        }
-      `}>
-        <div 
-          className={isMobile ? "h-full" : ""}
-          onClick={(e) => e.stopPropagation()}
-        >
+      {/* Right Sidebar — Desktop only */}
+      {!isMobile && (
+        <div className="fixed right-0 top-0 h-screen">
           <RightSidebar />
         </div>
-      </div>
+      )}
+
+      {/* Bottom Navigation for Mobile */}
+      {isMobile && (
+        <div className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-sm border-t border-border z-50 flex justify-around p-2">
+          <Button variant="ghost" size="icon" onClick={() => (window.location.href = "/home")}>
+            <Home size={22} />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => (window.location.href = "/cart")}>
+            <ShoppingCart size={22} />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => (window.location.href = "/profile")}>
+            <User size={22} />
+          </Button>
+        </div>
+      )}
 
       {/* Mobile Overlay */}
-      {(showMobileSidebar || showMobileRightSidebar) && isMobile && (
+      {showMobileSidebar && isMobile && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-30 lg:hidden" />
       )}
     </div>
