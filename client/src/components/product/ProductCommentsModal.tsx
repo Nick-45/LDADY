@@ -18,7 +18,7 @@ interface ProductCommentsModalProps {
 
 interface CommentWithUser extends ProductComment {
   user: User;
-  replies?: (ProductComment & { user: User })[];
+  replies?: CommentWithUser[];
   likedByUser?: boolean;
   likesCount?: number;
 }
@@ -32,7 +32,7 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
 
   const user = supabase.auth.user();
 
-  // Fetch comments from Supabase
+  // 🔹 Fetch all comments and build a threaded structure
   const fetchComments = async () => {
     if (!product.id) return;
 
@@ -40,8 +40,7 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
       .from("product_comments")
       .select(`
         *,
-        user:users(id, first_name, last_name, email, profile_image_url),
-        replies:product_comments(*, user:users(id, first_name, last_name, email, profile_image_url))
+        user:users(id, first_name, last_name, email, profile_image_url)
       `)
       .eq("product_id", product.id)
       .order("created_at", { ascending: true });
@@ -52,34 +51,37 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
         description: "Failed to load comments",
         variant: "destructive",
       });
-    } else {
-      const formatted = data.map((c: any) => ({
-        ...c,
-        user: c.user,
-        replies: c.replies || [],
-        likedByUser: false,
-        likesCount: 0,
-      }));
-      setComments(formatted);
+      return;
     }
+
+    // Build threaded structure recursively
+    const buildThread = (parentId: string | null): CommentWithUser[] =>
+      (data || [])
+        .filter((c: any) => c.parent_comment_id === parentId)
+        .map((c: any) => ({
+          ...c,
+          replies: buildThread(c.id),
+          likedByUser: false,
+          likesCount: 0,
+        }));
+
+    setComments(buildThread(null));
   };
 
   useEffect(() => {
     if (isOpen) fetchComments();
   }, [isOpen]);
 
-  // Add new comment or reply
+  // 🔹 Add new comment or reply
   const handleAddComment = async (content: string, parentCommentId?: string) => {
     if (!content.trim() || !user) return;
 
-    const { error } = await supabase
-      .from("product_comments")
-      .insert({
-        content: content.trim(),
-        product_id: product.id,
-        parent_comment_id: parentCommentId || null,
-        user_id: user.id,
-      });
+    const { error } = await supabase.from("product_comments").insert({
+      content: content.trim(),
+      product_id: product.id,
+      parent_comment_id: parentCommentId || null,
+      user_id: user.id,
+    });
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -92,11 +94,10 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
     fetchComments();
   };
 
-  // Toggle like
+  // 🔹 Toggle like
   const handleToggleLike = async (commentId: string) => {
     if (!user) return;
 
-    // Check if already liked
     const { data: existing } = await supabase
       .from("product_comment_likes")
       .select("*")
@@ -105,18 +106,17 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
       .single();
 
     if (existing) {
-      // Remove like
       await supabase.from("product_comment_likes").delete().eq("id", existing.id);
     } else {
-      // Add like
       await supabase.from("product_comment_likes").insert({ comment_id: commentId, user_id: user.id });
     }
 
     fetchComments();
   };
 
-  const renderComment = (comment: CommentWithUser) => (
-    <div key={comment.id} className="space-y-2">
+  // 🔹 Recursive renderer for comment threads
+  const renderComment = (comment: CommentWithUser, depth = 0) => (
+    <div key={comment.id} className={`space-y-2 ${depth > 0 ? `ml-${Math.min(depth * 6, 24)}` : ""}`}>
       <div className="flex items-start space-x-3 p-3 bg-muted/30 rounded-lg">
         <div className="flex-shrink-0">
           {comment.user?.profile_image_url ? (
@@ -132,18 +132,27 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
             <p className="text-sm font-medium text-foreground">
               {comment.user?.first_name} {comment.user?.last_name}
             </p>
-            <p className="text-xs text-muted-foreground">{new Date(comment.created_at).toLocaleDateString()}</p>
+            <p className="text-xs text-muted-foreground">
+              {new Date(comment.created_at).toLocaleDateString()}
+            </p>
           </div>
           <p className="text-sm text-foreground mt-1">{comment.content}</p>
           <div className="flex space-x-3 mt-2">
-            <Button variant="ghost" size="sm" onClick={() => setReplyingTo(comment.id)} className="h-7 px-2 text-xs">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setReplyingTo(comment.id)}
+              className="h-7 px-2 text-xs"
+            >
               <Reply className="w-3 h-3 mr-1" /> Reply
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => handleToggleLike(comment.id)}
-              className={`h-7 px-2 text-xs flex items-center ${comment.likedByUser ? "text-primary font-semibold" : ""}`}
+              className={`h-7 px-2 text-xs flex items-center ${
+                comment.likedByUser ? "text-primary font-semibold" : ""
+              }`}
             >
               <ThumbsUp className="w-3 h-3 mr-1" /> {comment.likesCount || 0}
             </Button>
@@ -152,7 +161,7 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
       </div>
 
       {replyingTo === comment.id && (
-        <div className="ml-11 space-y-2">
+        <div className={`ml-${Math.min(depth * 6 + 6, 24)} space-y-2`}>
           <Textarea
             placeholder="Write a reply..."
             value={replyContent}
@@ -163,7 +172,14 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
             <Button size="sm" onClick={() => handleAddComment(replyContent, comment.id)}>
               <Send className="w-3 h-3 mr-1" /> Reply
             </Button>
-            <Button variant="outline" size="sm" onClick={() => { setReplyingTo(null); setReplyContent(""); }}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setReplyingTo(null);
+                setReplyContent("");
+              }}
+            >
               Cancel
             </Button>
           </div>
@@ -171,27 +187,8 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
       )}
 
       {comment.replies && comment.replies.length > 0 && (
-        <div className="ml-11 space-y-2">
-          {comment.replies.map((reply) => (
-            <div key={reply.id} className="flex items-start space-x-3 p-2 bg-muted/20 rounded-lg">
-              <div className="flex-shrink-0">
-                {reply.user?.profile_image_url ? (
-                  <img src={reply.user.profile_image_url} alt="avatar" className="w-6 h-6 rounded-full" />
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-xs">
-                    {reply.user?.first_name?.[0] || "U"}
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center space-x-2">
-                  <p className="text-xs font-medium text-foreground">{reply.user?.first_name} {reply.user?.last_name}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(reply.created_at).toLocaleDateString()}</p>
-                </div>
-                <p className="text-xs text-foreground mt-1">{reply.content}</p>
-              </div>
-            </div>
-          ))}
+        <div className="space-y-2">
+          {comment.replies.map((reply) => renderComment(reply, depth + 1))}
         </div>
       )}
     </div>
@@ -213,7 +210,7 @@ export default function ProductCommentsModal({ product, isOpen, onClose }: Produ
               No comments yet. Be the first to comment!
             </div>
           ) : (
-            comments.map(renderComment)
+            comments.map((comment) => renderComment(comment))
           )}
         </div>
 
