@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { useAuth } from "@/hooks/useAuth"; // <-- import useAuth to get user id
+import { useAuth } from "@/hooks/useAuth";
 
 const CURRENCIES = [
   { value: "USD", label: "USD ($)" },
@@ -28,7 +28,7 @@ interface PostProductModalProps {
 export default function PostProductModal({ isOpen, onClose }: PostProductModalProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { user } = useAuth(); // get logged-in user
+  const { user } = useAuth();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -37,10 +37,39 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
     currency: "KES",
     imageUrl: "",
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("User not logged in");
+
+      let finalImageUrl = formData.imageUrl;
+
+      // If user uploaded a file, upload it to Supabase storage
+      if (imageFile) {
+        setUploading(true);
+        const fileExt = imageFile.name.split(".").pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `product-images/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("product-images")
+          .upload(filePath, imageFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from("product-images")
+          .getPublicUrl(filePath);
+
+        finalImageUrl = publicUrlData?.publicUrl;
+        setUploading(false);
+      }
+
+      if (!finalImageUrl) {
+        throw new Error("Please provide an image (upload or URL)");
+      }
 
       const { data, error } = await supabase
         .from("products")
@@ -50,8 +79,8 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             description: formData.description,
             price: parseFloat(formData.price),
             currency: formData.currency,
-            image_url: formData.imageUrl ? [formData.imageUrl] : [], // wrap in array for text[]
-            user_id: user.id, // include user id
+            image_url: [finalImageUrl],
+            user_id: user.id,
           },
         ]);
 
@@ -61,6 +90,8 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
     onSuccess: () => {
       toast({ title: "Success", description: "Product posted successfully" });
       queryClient.invalidateQueries({ queryKey: ["products"] });
+      setFormData({ name: "", description: "", price: "", currency: "KES", imageUrl: "" });
+      setImageFile(null);
       onClose();
     },
     onError: (error: any) => {
@@ -69,6 +100,7 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
         description: error.message || "Failed to post product",
         variant: "destructive",
       });
+      setUploading(false);
     },
   });
 
@@ -81,6 +113,14 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.imageUrl && !imageFile) {
+      toast({
+        title: "Error",
+        description: "Please upload an image or provide an image URL.",
+        variant: "destructive",
+      });
+      return;
+    }
     mutation.mutate();
   };
 
@@ -91,6 +131,7 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
           <DialogTitle>Post a New Product</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Product Name */}
           <div className="space-y-2">
             <Label htmlFor="name">Product Name *</Label>
             <Input
@@ -102,6 +143,7 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             />
           </div>
 
+          {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="description">Description *</Label>
             <Input
@@ -113,11 +155,14 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             />
           </div>
 
+          {/* Price */}
           <div className="space-y-2">
             <Label htmlFor="price">Price *</Label>
             <div className="flex gap-2">
               <div className="flex-1 flex items-center border rounded-md overflow-hidden">
-                <span className="px-3 whitespace-nowrap text-gray-600 bg-gray-100">{getCurrencySymbol()}</span>
+                <span className="px-3 whitespace-nowrap text-gray-600 bg-gray-100">
+                  {getCurrencySymbol()}
+                </span>
                 <Input
                   id="price"
                   type="number"
@@ -151,18 +196,52 @@ export default function PostProductModal({ isOpen, onClose }: PostProductModalPr
             </div>
           </div>
 
+          {/* Image Upload or URL */}
           <div className="space-y-2">
-            <Label htmlFor="imageUrl">Image URL</Label>
-            <Input
-              id="imageUrl"
-              value={formData.imageUrl}
-              onChange={(e) => setFormData((prev) => ({ ...prev, imageUrl: e.target.value }))}
-              placeholder="https://example.com/image.jpg"
-            />
+            <Label>Product Image (Upload or URL) *</Label>
+
+            <div className="space-y-2">
+              <Input
+                id="imageFile"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setImageFile(file);
+                  if (file) setFormData((prev) => ({ ...prev, imageUrl: "" }));
+                }}
+              />
+
+              <Input
+                id="imageUrl"
+                value={formData.imageUrl}
+                onChange={(e) => {
+                  setFormData((prev) => ({ ...prev, imageUrl: e.target.value }));
+                  if (e.target.value) setImageFile(null);
+                }}
+                placeholder="https://example.com/image.jpg"
+              />
+
+              {(imageFile || formData.imageUrl) && (
+                <div className="mt-2">
+                  <Label>Preview:</Label>
+                  <img
+                    src={imageFile ? URL.createObjectURL(imageFile) : formData.imageUrl}
+                    alt="Preview"
+                    className="w-full h-48 object-cover rounded-lg border"
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
-          <Button type="submit" disabled={mutation.isPending} className="w-full">
-            {mutation.isPending ? "Posting..." : "Post Product"}
+          {/* Submit */}
+          <Button type="submit" disabled={mutation.isPending || uploading} className="w-full">
+            {uploading
+              ? "Uploading..."
+              : mutation.isPending
+              ? "Posting..."
+              : "Post Product"}
           </Button>
         </form>
       </DialogContent>
