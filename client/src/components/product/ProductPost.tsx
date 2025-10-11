@@ -84,7 +84,7 @@ export default function ProductPost({ product }: ProductPostProps) {
   const mainImage =
     product.imageUrls && product.imageUrls.length > 0
       ? product.imageUrls[0]
-      : "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=400";
+      : null; // No fallback URL
 
   return (
     <div
@@ -140,12 +140,14 @@ export default function ProductPost({ product }: ProductPostProps) {
             </p>
 
             {/* Product Image */}
-            <img
-              src={mainImage}
-              alt={product.name}
-              className="rounded-xl w-full object-cover"
-              data-testid={`product-image-${product.id}`}
-            />
+            {mainImage && (
+              <img
+                src={mainImage}
+                alt={product.name}
+                className="rounded-xl w-full object-cover"
+                data-testid={`product-image-${product.id}`}
+              />
+            )}
 
             {/* Product Details */}
             <div className="bg-secondary/50 p-4 rounded-lg">
