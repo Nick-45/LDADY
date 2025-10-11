@@ -6,7 +6,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/hooks/useCart";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { FaShoppingCart, FaShare, FaHeart, FaArrowLeft, FaStore } from "react-icons/fa";
+import { 
+  FaShoppingCart, 
+  FaShare, 
+  FaHeart, 
+  FaArrowLeft, 
+  FaStore 
+} from "react-icons/fa";
 import MessageSellerButton from "@/components/product/MessageSellerButton";
 import ProductCommentsModal from "@/components/product/ProductCommentsModal";
 import AddProductToVroomModal from "@/components/vroom/AddProductToVroomModal";
@@ -37,21 +43,33 @@ export default function ProductDetailPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (params?.id) {
-      fetchProductData(params.id);
-    }
+    if (params?.id) fetchProduct(params.id);
   }, [params?.id]);
 
-  // Fetch product from Supabase
-  const fetchProductData = async (productId: string) => {
+  // ✅ Fetch product + seller profile directly from Supabase
+  const fetchProduct = async (productId: string) => {
     try {
       setLoading(true);
 
       const { data, error } = await supabase
         .from("products")
         .select(`
-          *,
-          user:users(id, first_name, last_name, email, profile_image_url)
+          id,
+          name,
+          description,
+          price,
+          currency,
+          image_urls,
+          likes,
+          created_at,
+          user_id,
+          profiles (
+            id,
+            first_name,
+            second_name,
+            email,
+            profile_image_url
+          )
         `)
         .eq("id", productId)
         .single();
@@ -59,7 +77,7 @@ export default function ProductDetailPage() {
       if (error || !data) {
         toast({
           title: "Error",
-          description: "Failed to load product",
+          description: "Failed to load product details.",
           variant: "destructive",
         });
         setProduct(null);
@@ -67,9 +85,10 @@ export default function ProductDetailPage() {
         setProduct(data);
       }
     } catch (err) {
+      console.error(err);
       toast({
         title: "Error",
-        description: "Failed to load product",
+        description: "An unexpected error occurred while loading the product.",
         variant: "destructive",
       });
     } finally {
@@ -93,12 +112,12 @@ export default function ProductDetailPage() {
       await navigator.clipboard.writeText(productUrl);
       toast({
         title: "Link Copied!",
-        description: "Product link has been copied to clipboard.",
+        description: "Product link copied to clipboard.",
       });
     } catch (err) {
       toast({
         title: "Error",
-        description: "Failed to copy link. Please try again.",
+        description: "Failed to copy link. Try again.",
         variant: "destructive",
       });
     }
@@ -106,7 +125,9 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center">
+        Loading...
+      </div>
     );
   }
 
@@ -119,16 +140,19 @@ export default function ProductDetailPage() {
   }
 
   const mainImage =
-    product.image_urls && product.image_urls.length > 0
+    product.image_urls?.length > 0
       ? product.image_urls[selectedImage]
-      : "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600";
+      : "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=800&h=600";
 
-  const currencySymbol = product.currency
-    ? CURRENCY_SYMBOLS[product.currency] || "KSh"
-    : "KSh";
+  const currencySymbol =
+    CURRENCY_SYMBOLS[product.currency] || "KSh";
 
   const displayPrice =
-    typeof product.price === "number" ? product.price.toFixed(2) : product.price;
+    typeof product.price === "number"
+      ? product.price.toFixed(2)
+      : product.price;
+
+  const seller = product.profiles;
 
   return (
     <div className="flex min-h-screen">
@@ -136,13 +160,23 @@ export default function ProductDetailPage() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto space-y-8">
-          <Button variant="outline" size="sm" onClick={() => window.history.back()} className="mb-6">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.history.back()}
+            className="mb-6"
+          >
             <FaArrowLeft className="mr-2" /> Back
           </Button>
 
+          {/* Product Image */}
           <div>
-            <img src={mainImage} alt={product.name} className="w-full object-cover rounded-lg" />
-            {product.image_urls && product.image_urls.length > 1 && (
+            <img
+              src={mainImage}
+              alt={product.name}
+              className="w-full object-cover rounded-lg"
+            />
+            {product.image_urls?.length > 1 && (
               <div className="grid grid-cols-4 gap-2 mt-4">
                 {product.image_urls.map((url: string, index: number) => (
                   <img
@@ -150,7 +184,9 @@ export default function ProductDetailPage() {
                     src={url}
                     alt={`${product.name} ${index + 1}`}
                     className={`w-full h-20 object-cover rounded cursor-pointer border-2 ${
-                      selectedImage === index ? "border-primary" : "border-transparent"
+                      selectedImage === index
+                        ? "border-primary"
+                        : "border-transparent"
                     }`}
                     onClick={() => setSelectedImage(index)}
                   />
@@ -159,6 +195,7 @@ export default function ProductDetailPage() {
             )}
           </div>
 
+          {/* Product Details */}
           <div className="space-y-6">
             <div>
               <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
@@ -166,30 +203,38 @@ export default function ProductDetailPage() {
                 {currencySymbol}
                 {displayPrice}
               </p>
-              <p className="text-muted-foreground mb-4">{product.description}</p>
+              <p className="text-muted-foreground mb-4">
+                {product.description}
+              </p>
             </div>
 
-            {product.user && (
+            {/* Seller Section */}
+            {seller && (
               <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
-                {product.user.profile_image_url ? (
-                  <img src={product.user.profile_image_url} alt="Seller" className="w-12 h-12 rounded-full object-cover" />
+                {seller.profile_image_url ? (
+                  <img
+                    src={seller.profile_image_url}
+                    alt="Seller"
+                    className="w-12 h-12 rounded-full object-cover"
+                  />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                     <span className="text-lg font-semibold">
-                      {product.user.first_name?.[0]}
-                      {product.user.last_name?.[0]}
+                      {seller.first_name?.[0]}
+                      {seller.second_name?.[0]}
                     </span>
                   </div>
                 )}
                 <div>
                   <p className="font-semibold">
-                    {product.user.first_name} {product.user.last_name}
+                    {seller.first_name} {seller.second_name}
                   </p>
                   <p className="text-sm text-muted-foreground">Seller</p>
                 </div>
               </div>
             )}
 
+            {/* Actions */}
             <div className="space-y-3">
               <Button onClick={handleAddToCart} className="w-full" size="lg">
                 <FaShoppingCart className="mr-2" /> Add to Cart
@@ -200,10 +245,10 @@ export default function ProductDetailPage() {
                   <FaShare className="mr-2" /> Share
                 </Button>
 
-                {isAuthenticated && product.user?.id && (
+                {isAuthenticated && seller?.id && (
                   <MessageSellerButton
-                    sellerId={product.user.id}
-                    sellerName={`${product.user.first_name} ${product.user.last_name}`}
+                    sellerId={seller.id}
+                    sellerName={`${seller.first_name} ${seller.second_name}`}
                     productName={product.name}
                     variant="outline"
                     className="flex-1"
@@ -212,12 +257,20 @@ export default function ProductDetailPage() {
               </div>
 
               {isAuthenticated && (
-                <Button variant="ghost" onClick={() => setShowVroomModal(true)} className="w-full">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowVroomModal(true)}
+                  className="w-full"
+                >
                   <FaStore className="mr-2" /> Add to Vroom
                 </Button>
               )}
 
-              <Button variant="ghost" onClick={() => setShowCommentsModal(true)} className="w-full">
+              <Button
+                variant="ghost"
+                onClick={() => setShowCommentsModal(true)}
+                className="w-full"
+              >
                 <FaHeart className="mr-2" /> View Comments
               </Button>
             </div>
@@ -225,14 +278,14 @@ export default function ProductDetailPage() {
             {product.likes !== undefined && (
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <FaHeart />
-                  {product.likes} likes
+                  <FaHeart /> {product.likes} likes
                 </span>
               </div>
             )}
           </div>
         </div>
 
+        {/* Modals */}
         {showVroomModal && (
           <AddProductToVroomModal
             isOpen={showVroomModal}
